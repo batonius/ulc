@@ -82,7 +82,8 @@ mod test {
         let c = Variable::new_rc("c");
         let tests = vec![("a", &a, "b", "b"),
                          ("b x", &b, "\\n.n", "(\\n.n) x"),
-                         ("\\z. z c (\\c. c)", &c, "d", "\\z. z d (\\c. c)")];
+                         ("\\z. z c (\\c. c)", &c, "d", "\\z. z d (\\c. c)"),
+                         ("x", &a, "b", "x")];
         for (term, var, val, res) in tests.into_iter() {
             assert_eq!(&super::subs_var(&parse_term(term).unwrap(),
                                         var,

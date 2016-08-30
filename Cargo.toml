@@ -1,0 +1,7 @@
+[package]
+name = "ulc"
+version = "0.1.0"
+authors = ["baton <batonius.kirov@gmail.com>"]
+
+[dependencies]
+combine = "*"

@@ -56,40 +56,82 @@ impl fmt::Display for Term {
     }
 }
 
-pub trait TermVisitor {
+pub trait ResultTermVisitor {
+    type Result;
     fn visit_var(&mut self, _: &BoundVars, _: &RcVar) {}
     fn visit_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm) {}
     fn visit_appl(&mut self, _: &BoundVars, _: &RcTerm, _: &RcTerm) {}
+
+    fn leave_var(&mut self, _: &BoundVars, _: &RcVar) -> Self::Result;
+    fn leave_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm, _: Self::Result) -> Self::Result;
+    fn leave_appl(&mut self,
+                  _: &BoundVars,
+                  _: &RcTerm,
+                  _: &RcTerm,
+                  _: Self::Result,
+                  _: Self::Result)
+                  -> Self::Result;
 }
 
 impl Term {
-    pub fn visit<V: TermVisitor>(&self, visitor: &mut V) {
-        let mut stack: Vec<Option<&Term>> = Vec::new();
+    pub fn visit_result<V: ResultTermVisitor>(&self, visitor: &mut V) -> V::Result {
+        enum StackAction<'a> {
+            ProcessTerm(&'a Term),
+            BacktrackTerm(&'a Term),
+            UnboundVar,
+        };
+
+        let mut stack: Vec<StackAction> = Vec::new();
+        let mut result_stack: Vec<V::Result> = Vec::new();
         let mut bound_vars: BoundVars = Vec::new();
 
-        stack.push(Some(self));
+        stack.push(StackAction::ProcessTerm(self));
 
-        while let Some(t) = stack.pop() {
-            if let Some(t) = t {
-                match *t {
-                    Term::Var(ref v) => {
-                        visitor.visit_var(&bound_vars, v);
-                    }
-                    Term::Abs(ref v, ref b) => {
-                        visitor.visit_abs(&bound_vars, v, b);
-                        stack.push(None);
-                        stack.push(Some(b));
-                        bound_vars.push(v);
-                    }
-                    Term::Appl(ref l, ref r) => {
-                        visitor.visit_appl(&bound_vars, l, r);
-                        stack.push(Some(l));
-                        stack.push(Some(r));
+        while let Some(stack_action) = stack.pop() {
+            match stack_action {
+                StackAction::ProcessTerm(term) => {
+                    match *term {
+                        Term::Var(ref v) => {
+                            visitor.visit_var(&bound_vars, v);
+                            result_stack.push(visitor.leave_var(&bound_vars, v));
+                        }
+                        Term::Abs(ref v, ref b) => {
+                            visitor.visit_abs(&bound_vars, v, b);
+                            stack.push(StackAction::BacktrackTerm(term));
+                            stack.push(StackAction::UnboundVar);
+                            stack.push(StackAction::ProcessTerm(b));
+                            bound_vars.push(v);
+                        }
+                        Term::Appl(ref l, ref r) => {
+                            visitor.visit_appl(&bound_vars, l, r);
+                            stack.push(StackAction::BacktrackTerm(term));
+                            stack.push(StackAction::ProcessTerm(l));
+                            stack.push(StackAction::ProcessTerm(r));
+                        }
                     }
                 }
-            } else {
-                bound_vars.pop();
+                StackAction::BacktrackTerm(term) => {
+                    match *term {
+                        Term::Var(..) => {
+                            panic!();
+                        }
+                        Term::Abs(ref v, ref b) => {
+                            let b_result = result_stack.pop().unwrap();
+                            result_stack.push(visitor.leave_abs(&bound_vars, v, b, b_result));
+                        }
+                        Term::Appl(ref l, ref r) => {
+                            let l_result = result_stack.pop().unwrap();
+                            let r_result = result_stack.pop().unwrap();
+                            result_stack.push(visitor.leave_appl(&bound_vars, l, r,
+                                                                 l_result, r_result));
+                        }
+                    }
+                }
+                StackAction::UnboundVar => {
+                    bound_vars.pop();
+                }
             }
         }
+        result_stack.pop().unwrap()
     }
 }

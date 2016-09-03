@@ -13,25 +13,20 @@ pub fn parse_term(s: &str) -> Option<RcTerm> {
 #[cfg(test)]
 mod test {
     use types::{Term, Variable};
-    use std::rc::Rc;
 
     #[test]
-    fn var_term() {
-        assert_eq!(super::parse_term(" a"),
-                   Some(Rc::new(Term::Var(Variable::new_rc("a")))));
-    }
-
-    #[test]
-    fn abs_term() {
-        assert_eq!(super::parse_term(" (\\ a . a) "),
-                   Some(Rc::new(Term::Abs(Variable::new_rc("a"),
-                                          Rc::new(Term::Var(Variable::new_rc("a")))))));
-    }
-
-    #[test]
-    fn appl_term() {
-        assert_eq!(super::parse_term("(a) b"),
-                   Some(Rc::new(Term::Appl(Rc::new(Term::Var(Variable::new_rc("a"))),
-                                           Rc::new(Term::Var(Variable::new_rc("b")))))));
+    fn parser_test() {
+        let tests = vec![(" a", Some(Term::var_rc(Variable::new("a")))),
+                         ("123", Some(Term::num_lit_rc(123))),
+                         (" (\\ a . a) ",
+                          Some(Term::abs_rc(Variable::new("a"), Term::var_rc(Variable::new("a"))))),
+                         (" (\\ a . 321) ",
+                          Some(Term::abs_rc(Variable::new("a"), Term::num_lit_rc(321)))),
+                         ("(a) b",
+                          Some(Term::appl_rc(Term::var_rc(Variable::new("a")),
+                                             Term::var_rc(Variable::new("b")))))];
+        for (s, t) in tests.into_iter() {
+            assert_eq!(super::parse_term(s), t);
+        }
     }
 }

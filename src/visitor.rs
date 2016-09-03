@@ -1,16 +1,22 @@
-use types::{RcVar, RcTerm, Term};
+use types::{Variable, RcTerm, Term, Literal};
 
-pub type BoundVars<'a> = [&'a RcVar];
+pub type BoundVars<'a> = [&'a Variable];
 
 pub trait TermVisitor {
     type Result;
 
-    fn enter_var(&mut self, _: &BoundVars, _: &RcVar) {}
-    fn enter_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm) {}
+    fn enter_var(&mut self, _: &BoundVars, _: &Variable) {}
+    fn enter_abs(&mut self, _: &BoundVars, _: &Variable, _: &RcTerm) {}
     fn enter_appl(&mut self, _: &BoundVars, _: &RcTerm, _: &RcTerm) {}
+    fn enter_lit(&mut self, _: &BoundVars, _: &Literal) {}
 
-    fn leave_var(&mut self, _: &BoundVars, _: &RcVar) -> Self::Result;
-    fn leave_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm, _: Self::Result) -> Self::Result;
+    fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result;
+    fn leave_abs(&mut self,
+                 _: &BoundVars,
+                 _: &Variable,
+                 _: &RcTerm,
+                 _: Self::Result)
+                 -> Self::Result;
     fn leave_appl(&mut self,
                   _: &BoundVars,
                   _: &RcTerm,
@@ -18,12 +24,14 @@ pub trait TermVisitor {
                   _: Self::Result,
                   _: Self::Result)
                   -> Self::Result;
+    fn leave_lit(&mut self, _: &BoundVars, _: &Literal) -> Self::Result;
 }
 
 pub trait SimpleTermVisitor {
-    fn visit_var(&mut self, _: &BoundVars, _: &RcVar) {}
-    fn visit_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm) {}
+    fn visit_var(&mut self, _: &BoundVars, _: &Variable) {}
+    fn visit_abs(&mut self, _: &BoundVars, _: &Variable, _: &RcTerm) {}
     fn visit_appl(&mut self, _: &BoundVars, _: &RcTerm, _: &RcTerm) {}
+    fn visit_lit(&mut self, _: &BoundVars, _: &Literal) {}
 }
 
 impl<V> TermVisitor for V
@@ -31,22 +39,32 @@ impl<V> TermVisitor for V
 {
     type Result = ();
 
-    fn enter_var(&mut self, bound_vars: &BoundVars, var: &RcVar) {
+    fn enter_var(&mut self, bound_vars: &BoundVars, var: &Variable) {
         self.visit_var(bound_vars, var);
     }
 
-    fn enter_abs(&mut self, bound_vars: &BoundVars, var: &RcVar, body: &RcTerm) {
+    fn enter_abs(&mut self, bound_vars: &BoundVars, var: &Variable, body: &RcTerm) {
         self.visit_abs(bound_vars, var, body);
     }
+
     fn enter_appl(&mut self, bound_vars: &BoundVars, left: &RcTerm, right: &RcTerm) {
         self.visit_appl(bound_vars, left, right);
     }
 
-    fn leave_var(&mut self, _: &BoundVars, _: &RcVar) -> Self::Result {
+    fn enter_lit(&mut self, bound_vars: &BoundVars, lit: &Literal) {
+        self.visit_lit(bound_vars, lit);
+    }
+
+    fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result {
         ()
     }
 
-    fn leave_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm, _: Self::Result) -> Self::Result {
+    fn leave_abs(&mut self,
+                 _: &BoundVars,
+                 _: &Variable,
+                 _: &RcTerm,
+                 _: Self::Result)
+                 -> Self::Result {
         ()
     }
 
@@ -57,6 +75,10 @@ impl<V> TermVisitor for V
                   _: Self::Result,
                   _: Self::Result)
                   -> Self::Result {
+        ()
+    }
+
+    fn leave_lit(&mut self, _: &BoundVars, _: &Literal) -> Self::Result {
         ()
     }
 }
@@ -77,7 +99,7 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
 
         let mut stack: Vec<StackAction> = Vec::new();
         let mut result_stack: Vec<V::Result> = Vec::new();
-        let mut bound_vars: Vec<&RcVar> = Vec::new();
+        let mut bound_vars: Vec<&Variable> = Vec::new();
 
         stack.push(StackAction::ProcessTerm(term));
 
@@ -102,11 +124,15 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             stack.push(StackAction::ProcessTerm(l));
                             stack.push(StackAction::ProcessTerm(r));
                         }
+                        Term::Lit(ref lit) => {
+                            visitor.enter_lit(&bound_vars, lit);
+                            result_stack.push(visitor.leave_lit(&bound_vars, lit));
+                        }
                     }
                 }
                 StackAction::BacktrackTerm(term) => {
                     match *term {
-                        Term::Var(..) => {
+                        Term::Var(..) | Term::Lit(..) => {
                             panic!();
                         }
                         Term::Abs(ref v, ref b) => {
@@ -136,7 +162,7 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
     fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
         fn do_rec<'a, V: TermVisitor>(term: &'a Term,
                                       visitor: &mut V,
-                                      bound_vars: &mut Vec<&'a RcVar>)
+                                      bound_vars: &mut Vec<&'a Variable>)
                                       -> V::Result {
             match *term {
                 Term::Var(ref v) => {
@@ -157,10 +183,14 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                     let r_res = do_rec(r, visitor, bound_vars);
                     visitor.leave_appl(bound_vars, l, r, l_res, r_res)
                 }
+                Term::Lit(ref l) => {
+                    visitor.enter_lit(bound_vars, l);
+                    visitor.leave_lit(bound_vars, l)
+                }
             }
         }
 
-        let mut bound_vars: Vec<&RcVar> = Vec::new();
+        let mut bound_vars: Vec<&Variable> = Vec::new();
 
         do_rec(term, visitor, &mut bound_vars)
     }

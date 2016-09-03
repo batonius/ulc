@@ -6,13 +6,11 @@ pub struct Variable {
     var_name: String,
 }
 
-pub type RcVar = Rc<Variable>;
-
 impl Variable {
-    pub fn new_rc<S>(name: S) -> RcVar
+    pub fn new<S>(name: S) -> Variable
         where S: Into<String>
     {
-        Rc::new(Variable { var_name: name.into() })
+        Variable { var_name: name.into() }
     }
 }
 
@@ -22,24 +20,42 @@ impl fmt::Display for Variable {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+pub enum Literal {
+    Num(isize),
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Literal::Num(val) => write!(f, "{}", val),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
-    Var(RcVar),
-    Abs(RcVar, RcTerm),
+    Var(Variable),
+    Abs(Variable, RcTerm),
     Appl(RcTerm, RcTerm),
+    Lit(Literal),
 }
 
 impl Term {
-    pub fn var_rc(var: RcVar) -> RcTerm {
+    pub fn var_rc(var: Variable) -> RcTerm {
         Rc::new(Term::Var(var))
     }
 
-    pub fn abs_rc(var: RcVar, term: RcTerm) -> RcTerm {
+    pub fn abs_rc(var: Variable, term: RcTerm) -> RcTerm {
         Rc::new(Term::Abs(var, term))
     }
 
     pub fn appl_rc(l: RcTerm, r: RcTerm) -> RcTerm {
         Rc::new(Term::Appl(l, r))
+    }
+
+    pub fn num_lit_rc(val: isize) -> RcTerm {
+        Rc::new(Term::Lit(Literal::Num(val)))
     }
 }
 
@@ -51,6 +67,7 @@ impl fmt::Display for Term {
             Term::Var(ref var) => var.fmt(f),
             Term::Abs(ref var, ref term) => write!(f, "\\{:#}.{:#}", var, term),
             Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
+            Term::Lit(ref lit) => lit.fmt(f),
         }
     }
 }

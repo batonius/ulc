@@ -1,4 +1,6 @@
-use types::{RcVar, BoundVars, RcTerm, Term};
+use types::{RcVar, RcTerm, Term};
+
+pub type BoundVars<'a> = [&'a RcVar];
 
 pub trait TermVisitor {
     type Result;
@@ -75,7 +77,7 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
 
         let mut stack: Vec<StackAction> = Vec::new();
         let mut result_stack: Vec<V::Result> = Vec::new();
-        let mut bound_vars: BoundVars = Vec::new();
+        let mut bound_vars: Vec<&RcVar> = Vec::new();
 
         stack.push(StackAction::ProcessTerm(term));
 
@@ -132,10 +134,10 @@ pub struct RecursiveVisitorStrategy;
 
 impl TermVisitorStrategy for RecursiveVisitorStrategy {
     fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
-        fn do_rec<'a, 'b, V: TermVisitor>(term: &'a Term,
-                                          visitor: &mut V,
-                                          bound_vars: &'b mut BoundVars<'a>)
-                                          -> V::Result {
+        fn do_rec<'a, V: TermVisitor>(term: &'a Term,
+                                      visitor: &mut V,
+                                      bound_vars: &mut Vec<&'a RcVar>)
+                                      -> V::Result {
             match *term {
                 Term::Var(ref v) => {
                     visitor.enter_var(bound_vars, v);
@@ -158,7 +160,7 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
             }
         }
 
-        let mut bound_vars: BoundVars = Vec::new();
+        let mut bound_vars: Vec<&RcVar> = Vec::new();
 
         do_rec(term, visitor, &mut bound_vars)
     }
@@ -167,13 +169,5 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
 impl Term {
     pub fn visit<V: TermVisitor, S: TermVisitorStrategy>(&self, visitor: &mut V) -> V::Result {
         S::visit(self, visitor)
-    }
-
-    pub fn visit_iteratively<V: TermVisitor>(&self, visitor: &mut V) -> V::Result {
-        self.visit::<V, IterativeVisitorStrategy>(visitor)
-    }
-
-    pub fn visit_recursevely<V: TermVisitor>(&self, visitor: &mut V) -> V::Result {
-        self.visit::<V, RecursiveVisitorStrategy>(visitor)
     }
 }

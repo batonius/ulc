@@ -7,7 +7,6 @@ pub struct Variable {
 }
 
 pub type RcVar = Rc<Variable>;
-pub type BoundVars<'a> = Vec<&'a RcVar>;
 
 impl Variable {
     pub fn new_rc<S>(name: S) -> RcVar
@@ -48,10 +47,10 @@ pub type RcTerm = Rc<Term>;
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Term::Var(ref var) => var.fmt(f),
-            &Term::Abs(ref var, ref term) => write!(f, "\\{:#}.{:#}", var, term),
-            &Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
+        match *self {
+            Term::Var(ref var) => var.fmt(f),
+            Term::Abs(ref var, ref term) => write!(f, "\\{:#}.{:#}", var, term),
+            Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
         }
     }
 }

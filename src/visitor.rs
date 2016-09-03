@@ -5,10 +5,18 @@ pub type BoundVars<'a> = [&'a Variable];
 pub trait TermVisitor {
     type Result;
 
-    fn enter_var(&mut self, _: &BoundVars, _: &Variable) {}
-    fn enter_abs(&mut self, _: &BoundVars, _: &Variable, _: &RcTerm) {}
-    fn enter_appl(&mut self, _: &BoundVars, _: &RcTerm, _: &RcTerm) {}
-    fn enter_lit(&mut self, _: &BoundVars, _: &Literal) {}
+    fn enter_var(&mut self, _: &BoundVars, _: &Variable) -> Option<Self::Result> {
+        None
+    }
+    fn enter_abs(&mut self, _: &BoundVars, _: &Variable, _: &RcTerm) -> Option<Self::Result> {
+        None
+    }
+    fn enter_appl(&mut self, _: &BoundVars, _: &RcTerm, _: &RcTerm) -> Option<Self::Result> {
+        None
+    }
+    fn enter_lit(&mut self, _: &BoundVars, _: &Literal) -> Option<Self::Result> {
+        None
+    }
 
     fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result;
     fn leave_abs(&mut self,
@@ -39,20 +47,32 @@ impl<V> TermVisitor for V
 {
     type Result = ();
 
-    fn enter_var(&mut self, bound_vars: &BoundVars, var: &Variable) {
+    fn enter_var(&mut self, bound_vars: &BoundVars, var: &Variable) -> Option<Self::Result> {
         self.visit_var(bound_vars, var);
+        None
     }
 
-    fn enter_abs(&mut self, bound_vars: &BoundVars, var: &Variable, body: &RcTerm) {
+    fn enter_abs(&mut self,
+                 bound_vars: &BoundVars,
+                 var: &Variable,
+                 body: &RcTerm)
+                 -> Option<Self::Result> {
         self.visit_abs(bound_vars, var, body);
+        None
     }
 
-    fn enter_appl(&mut self, bound_vars: &BoundVars, left: &RcTerm, right: &RcTerm) {
+    fn enter_appl(&mut self,
+                  bound_vars: &BoundVars,
+                  left: &RcTerm,
+                  right: &RcTerm)
+                  -> Option<Self::Result> {
         self.visit_appl(bound_vars, left, right);
+        None
     }
 
-    fn enter_lit(&mut self, bound_vars: &BoundVars, lit: &Literal) {
+    fn enter_lit(&mut self, bound_vars: &BoundVars, lit: &Literal) -> Option<Self::Result> {
         self.visit_lit(bound_vars, lit);
+        None
     }
 
     fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result {
@@ -108,25 +128,37 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                 StackAction::ProcessTerm(term) => {
                     match *term {
                         Term::Var(ref v) => {
-                            visitor.enter_var(&bound_vars, v);
-                            result_stack.push(visitor.leave_var(&bound_vars, v));
+                            if let Some(r) = visitor.enter_var(&bound_vars, v) {
+                                result_stack.push(r);
+                            } else {
+                                result_stack.push(visitor.leave_var(&bound_vars, v));
+                            }
                         }
                         Term::Abs(ref v, ref b) => {
-                            visitor.enter_abs(&bound_vars, v, b);
-                            stack.push(StackAction::BacktrackTerm(term));
-                            stack.push(StackAction::UnboundVar);
-                            stack.push(StackAction::ProcessTerm(b));
-                            bound_vars.push(v);
+                            if let Some(r) = visitor.enter_abs(&bound_vars, v, b) {
+                                result_stack.push(r);
+                            } else {
+                                stack.push(StackAction::BacktrackTerm(term));
+                                stack.push(StackAction::UnboundVar);
+                                stack.push(StackAction::ProcessTerm(b));
+                                bound_vars.push(v);
+                            }
                         }
                         Term::Appl(ref l, ref r) => {
-                            visitor.enter_appl(&bound_vars, l, r);
-                            stack.push(StackAction::BacktrackTerm(term));
-                            stack.push(StackAction::ProcessTerm(l));
-                            stack.push(StackAction::ProcessTerm(r));
+                            if let Some(r) = visitor.enter_appl(&bound_vars, l, r) {
+                                result_stack.push(r);
+                            } else {
+                                stack.push(StackAction::BacktrackTerm(term));
+                                stack.push(StackAction::ProcessTerm(l));
+                                stack.push(StackAction::ProcessTerm(r));
+                            }
                         }
                         Term::Lit(ref lit) => {
-                            visitor.enter_lit(&bound_vars, lit);
-                            result_stack.push(visitor.leave_lit(&bound_vars, lit));
+                            if let Some(r) = visitor.enter_lit(&bound_vars, lit) {
+                                result_stack.push(r);
+                            } else {
+                                result_stack.push(visitor.leave_lit(&bound_vars, lit));
+                            }
                         }
                     }
                 }
@@ -166,26 +198,38 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                                       -> V::Result {
             match *term {
                 Term::Var(ref v) => {
-                    visitor.enter_var(bound_vars, v);
-                    visitor.leave_var(bound_vars, v)
+                    if let Some(r) = visitor.enter_var(bound_vars, v) {
+                        r
+                    } else {
+                        visitor.leave_var(bound_vars, v)
+                    }
                 }
                 Term::Abs(ref v, ref b) => {
-                    visitor.enter_abs(bound_vars, v, b);
-                    bound_vars.push(v);
-                    let rec_result = do_rec(b, visitor, bound_vars);
-                    let res = visitor.leave_abs(bound_vars, v, b, rec_result);
-                    bound_vars.pop();
-                    res
+                    if let Some(r) = visitor.enter_abs(bound_vars, v, b) {
+                        r
+                    } else {
+                        bound_vars.push(v);
+                        let rec_result = do_rec(b, visitor, bound_vars);
+                        let res = visitor.leave_abs(bound_vars, v, b, rec_result);
+                        bound_vars.pop();
+                        res
+                    }
                 }
                 Term::Appl(ref l, ref r) => {
-                    visitor.enter_appl(bound_vars, l, r);
-                    let l_res = do_rec(l, visitor, bound_vars);
-                    let r_res = do_rec(r, visitor, bound_vars);
-                    visitor.leave_appl(bound_vars, l, r, l_res, r_res)
+                    if let Some(r) = visitor.enter_appl(bound_vars, l, r) {
+                        r
+                    } else {
+                        let l_res = do_rec(l, visitor, bound_vars);
+                        let r_res = do_rec(r, visitor, bound_vars);
+                        visitor.leave_appl(bound_vars, l, r, l_res, r_res)
+                    }
                 }
                 Term::Lit(ref l) => {
-                    visitor.enter_lit(bound_vars, l);
-                    visitor.leave_lit(bound_vars, l)
+                    if let Some(r) = visitor.enter_lit(bound_vars, l) {
+                        r
+                    } else {
+                        visitor.leave_lit(bound_vars, l)
+                    }
                 }
             }
         }

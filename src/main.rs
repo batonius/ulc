@@ -14,7 +14,7 @@ fn main() {
         if input.is_empty() {
             break;
         }
-        println!("{:#}", reduct::beta_reduction::<visitor::IterativeVisitorStrategy>(
+        println!("{:#}", reduct::beta_reduction_lazy::<visitor::IterativeVisitorStrategy>(
             &parse::parse_term(&input).expect("Parsing error")));
     }
 }

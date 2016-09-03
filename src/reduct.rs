@@ -1,76 +1,28 @@
-use types::{Term, RcTerm, RcVar, TermVisitor, ResultTermVisitor, BoundVars};
-use std::collections::{VecDeque, HashSet};
+use types::{Term, RcTerm, RcVar, BoundVars};
+use visitor::{SimpleTermVisitor, TermVisitor, TermVisitorStrategy};
+use std::collections::HashSet;
 
-pub fn free_vars(term: &Term) -> HashSet<RcVar> {
+pub fn free_vars<VS: TermVisitorStrategy>(term: &Term) -> HashSet<RcVar> {
     struct FreeVarCollector(HashSet<RcVar>);
-    impl ResultTermVisitor for FreeVarCollector {
-        type Result = ();
+    impl SimpleTermVisitor for FreeVarCollector {
         fn visit_var(&mut self, bound_vars: &BoundVars, var: &RcVar) {
             if !bound_vars.iter().any(|x| *x == var) {
                 self.0.insert(var.clone());
             }
         }
-        fn leave_var(&mut self, _: &BoundVars, _: &RcVar) -> Self::Result { () }
-        fn leave_abs(&mut self, _: &BoundVars, _: &RcVar, _: &RcTerm, _: Self::Result) -> Self::Result { () }
-        fn leave_appl(&mut self,
-                      _: &BoundVars,
-                      _: &RcTerm,
-                      _: &RcTerm,
-                      _: Self::Result,
-                      _: Self::Result)
-                      -> Self::Result { () }
     }
     let mut free_var_collector = FreeVarCollector(HashSet::new());
-    term.visit_result(&mut free_var_collector);
+    term.visit::<FreeVarCollector, VS>(&mut free_var_collector);
     free_var_collector.0
 }
 
-pub fn subs_var_rec(term: &RcTerm, var: &RcVar, val: &RcTerm) -> RcTerm {
-    fn do_subs(term: &Term,
-               var: &RcVar,
-               val: &RcTerm,
-               bound_vars: &mut Vec<RcVar>)
-               -> Option<RcTerm> {
-        match *term {
-            Term::Var(ref v) => {
-                if bound_vars.iter().any(|x| x == v) || v != var {
-                    None
-                } else {
-                    Some(val.clone())
-                }
-            }
-            Term::Abs(ref v, ref b) => {
-                bound_vars.push(v.clone());
-                let res = do_subs(b, var, val, bound_vars)
-                    .map(|new_body| Term::abs_rc(v.clone(), new_body));
-                bound_vars.pop();
-                res
-            }
-            Term::Appl(ref l, ref r) => {
-                let l_res = do_subs(l, var, val, bound_vars);
-                let r_res = do_subs(r, var, val, bound_vars);
-                if l_res.is_none() && r_res.is_none() {
-                    None
-                } else {
-                    Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
-                                       r_res.unwrap_or_else(|| r.clone())))
-                }
-            }
-        }
-    }
-
-    let mut bound_vars: Vec<RcVar> = Vec::new();
-
-    do_subs(term, var, val, &mut bound_vars).unwrap_or_else(|| term.clone())
-}
-
-pub fn subs_var_iter(term: &RcTerm, var: &RcVar, val: &RcTerm) -> RcTerm {
+pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &RcVar, val: &RcTerm) -> RcTerm {
     struct VarSubstitutor<'a> {
         var: &'a RcVar,
         val: &'a RcTerm,
     };
 
-    impl<'a> ResultTermVisitor for VarSubstitutor<'a> {
+    impl<'a> TermVisitor for VarSubstitutor<'a> {
         type Result = Option<RcTerm>;
         fn leave_var(&mut self, bound_vars: &BoundVars, v: &RcVar) -> Self::Result {
             if bound_vars.iter().any(|x| *x == self.var) || v != self.var {
@@ -107,13 +59,14 @@ pub fn subs_var_iter(term: &RcTerm, var: &RcVar, val: &RcTerm) -> RcTerm {
         var: var,
         val: val,
     };
-    term.visit_result(&mut var_substitutor).unwrap_or_else(|| term.clone())
+    term.visit::<VarSubstitutor, VS>(&mut var_substitutor).unwrap_or_else(|| term.clone())
 }
 
 #[cfg(test)]
 mod test {
-    use parser::parse_term;
+    use parse::parse_term;
     use types::Variable;
+    use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
     use std::collections::HashSet;
     use std::iter::FromIterator;
 
@@ -126,8 +79,11 @@ mod test {
                          ("\\a. (a b)", vec![b.clone()]),
                          ("(\\a. (\\x.b x) x)", vec![b.clone(), x.clone()])];
         for (s, t) in tests.into_iter() {
-            assert_eq!(super::free_vars(&parse_term(s).unwrap()),
-                       HashSet::from_iter(t.into_iter()));
+            let expected = HashSet::from_iter(t.into_iter());
+            assert_eq!(super::free_vars::<IterativeVisitorStrategy>(&parse_term(s).unwrap()),
+                       expected);
+            assert_eq!(super::free_vars::<RecursiveVisitorStrategy>(&parse_term(s).unwrap()),
+                       expected);
         }
     }
 
@@ -144,10 +100,12 @@ mod test {
             let src_term = parse_term(term).unwrap();
             let val_term = parse_term(val).unwrap();
             let result_term = parse_term(res).unwrap();
-            let res_subs_result = super::subs_var_rec(&src_term, &var, &val_term);
-            let iter_subs_result = super::subs_var_iter(&src_term, &var, &val_term);
+            let rec_subs_result =
+                super::subs_var::<RecursiveVisitorStrategy>(&src_term, &var, &val_term);
+            let iter_subs_result =
+                super::subs_var::<IterativeVisitorStrategy>(&src_term, &var, &val_term);
 
-            assert_eq!(res_subs_result, result_term);
+            assert_eq!(rec_subs_result, result_term);
             assert_eq!(iter_subs_result, result_term);
         }
     }

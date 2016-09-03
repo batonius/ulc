@@ -1,7 +1,8 @@
 extern crate combine;
 
 mod types;
-mod parser;
+mod parse;
+mod visitor;
 mod reduct;
 
 fn main() {
@@ -9,8 +10,8 @@ fn main() {
         .skip(1)
         .fold(" ".to_owned(), |acc, t| acc + &t);
     println!{"{}", a};
-    for term in parser::parse_term(&a) {
+    for term in parse::parse_term(&a) {
         println!("{:#}", term);
-        println!("{:?}", reduct::free_vars(&term));
+        println!("{:?}", reduct::free_vars::<visitor::IterativeVisitorStrategy>(&term));
     }
 }

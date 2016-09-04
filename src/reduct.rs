@@ -1,54 +1,44 @@
 use types::{Term, RcTerm, Variable, Literal};
-use visitor::{SimpleTermVisitor, TermVisitor, TermVisitorStrategy, BoundVars};
-use std::collections::HashSet;
+use visitor::{TermVisitor, TermVisitorStrategy};
 use std::marker::PhantomData;
-
-pub fn free_vars<VS: TermVisitorStrategy>(term: &Term) -> HashSet<Variable> {
-    struct FreeVarCollector(HashSet<Variable>);
-    impl SimpleTermVisitor for FreeVarCollector {
-        fn visit_var(&mut self, bound_vars: &BoundVars, var: &Variable) {
-            if !bound_vars.iter().any(|x| *x == var) {
-                self.0.insert(var.clone());
-            }
-        }
-    }
-    let mut free_var_collector = FreeVarCollector(HashSet::new());
-    term.visit::<FreeVarCollector, VS>(&mut free_var_collector);
-    free_var_collector.0
-}
 
 pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &RcTerm) -> RcTerm {
     struct VarSubstitutor<'a> {
         var: &'a Variable,
         val: &'a RcTerm,
+        bound_vars: Vec<Variable>,
     };
 
     impl<'a> TermVisitor for VarSubstitutor<'a> {
         type Result = Option<RcTerm>;
 
-        fn leave_lit(&mut self, _: &BoundVars, _: &Literal) -> Self::Result {
+        fn leave_lit(&mut self, _: &Literal) -> Self::Result {
             None
         }
 
-        fn leave_var(&mut self, bound_vars: &BoundVars, v: &Variable) -> Self::Result {
-            if bound_vars.iter().any(|x| *x == self.var) || v != self.var {
+        fn leave_var(&mut self, v: &Variable) -> Self::Result {
+            if self.bound_vars.iter().any(|x| x == self.var) || v != self.var {
                 None
             } else {
                 Some(self.val.clone())
             }
         }
 
+        fn enter_abs(&mut self, var: &Variable, _: &RcTerm) -> Option<Self::Result> {
+            self.bound_vars.push(var.clone());
+            None
+        }
+
         fn leave_abs(&mut self,
-                     _: &BoundVars,
                      v: &Variable,
                      _: &RcTerm,
                      body_result: Self::Result)
                      -> Self::Result {
+            self.bound_vars.pop();
             body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
         }
 
         fn leave_appl(&mut self,
-                      _: &BoundVars,
                       l: &RcTerm,
                       r: &RcTerm,
                       l_res: Self::Result,
@@ -66,6 +56,7 @@ pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &Rc
     let mut var_substitutor = VarSubstitutor {
         var: var,
         val: val,
+        bound_vars: Vec::new(),
     };
     term.visit::<VarSubstitutor, VS>(&mut var_substitutor).unwrap_or_else(|| term.clone())
 }
@@ -78,22 +69,16 @@ pub struct StrictBetaStep<VS> {
 
 impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
     type Result = Option<RcTerm>;
-    fn leave_lit(&mut self, _: &BoundVars, _: &Literal) -> Self::Result {
+    fn leave_lit(&mut self, _: &Literal) -> Self::Result {
         None
     }
-    fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result {
+    fn leave_var(&mut self, _: &Variable) -> Self::Result {
         None
     }
-    fn leave_abs(&mut self,
-                 _: &BoundVars,
-                 v: &Variable,
-                 _: &RcTerm,
-                 body_result: Self::Result)
-                 -> Self::Result {
+    fn leave_abs(&mut self, v: &Variable, _: &RcTerm, body_result: Self::Result) -> Self::Result {
         body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
     }
     fn leave_appl(&mut self,
-                  _: &BoundVars,
                   l: &RcTerm,
                   r: &RcTerm,
                   l_res: Self::Result,
@@ -117,22 +102,17 @@ pub struct LazyBetaStep<VS> {
 
 impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
     type Result = Option<RcTerm>;
-    fn leave_lit(&mut self, _: &BoundVars, _: &Literal) -> Self::Result {
+    fn leave_lit(&mut self, _: &Literal) -> Self::Result {
         None
     }
-    fn leave_var(&mut self, _: &BoundVars, _: &Variable) -> Self::Result {
+    fn leave_var(&mut self, _: &Variable) -> Self::Result {
         None
     }
-    fn leave_abs(&mut self,
-                 _: &BoundVars,
-                 v: &Variable,
-                 _: &RcTerm,
-                 body_result: Self::Result)
-                 -> Self::Result {
+    fn leave_abs(&mut self, v: &Variable, _: &RcTerm, body_result: Self::Result) -> Self::Result {
         body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
     }
 
-    fn enter_appl(&mut self, _: &BoundVars, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
+    fn enter_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
         match **l {
             Term::Abs(ref v, ref b) => Some(Some(subs_var::<VS>(b, v, r))),
             _ => None,
@@ -140,7 +120,6 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
     }
 
     fn leave_appl(&mut self,
-                  _: &BoundVars,
                   l: &RcTerm,
                   r: &RcTerm,
                   l_res: Self::Result,
@@ -206,26 +185,7 @@ mod test {
     use parse::parse_term;
     use types::Variable;
     use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
-    use std::collections::HashSet;
-    use std::iter::FromIterator;
     use super::{StrictBetaStep, LazyBetaStep};
-
-    #[test]
-    fn free_vars() {
-        let b = Variable::new("b");
-        let x = Variable::new("x");
-        let tests = vec![("\\a.a", vec![]),
-                         ("b", vec![b.clone()]),
-                         ("\\a. (a b)", vec![b.clone()]),
-                         ("(\\a. (\\x.b x) x)", vec![b.clone(), x.clone()])];
-        for (s, t) in tests.into_iter() {
-            let expected = HashSet::from_iter(t.into_iter());
-            assert_eq!(super::free_vars::<IterativeVisitorStrategy>(&parse_term(s).unwrap()),
-                       expected);
-            assert_eq!(super::free_vars::<RecursiveVisitorStrategy>(&parse_term(s).unwrap()),
-                       expected);
-        }
-    }
 
     #[test]
     fn subs_vars() {

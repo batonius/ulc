@@ -5,3 +5,6 @@ authors = ["baton <batonius.kirov@gmail.com>"]
 
 [dependencies]
 combine = "*"
+
+[profile.release]
+debug = true

@@ -1,4 +1,5 @@
 use types::{Variable, RcTerm, Term, Literal};
+use builtin::BuiltinClosure;
 
 pub trait TermVisitor {
     type Result;
@@ -15,6 +16,9 @@ pub trait TermVisitor {
     fn enter_lit(&mut self, _: &Literal) -> Option<Self::Result> {
         None
     }
+    fn enter_builtin(&mut self, _: &BuiltinClosure) -> Option<Self::Result> {
+        None
+    }
 
     fn leave_var(&mut self, _: &Variable) -> Self::Result;
     fn leave_abs(&mut self, _: &Variable, _: &RcTerm, _: Self::Result) -> Self::Result;
@@ -25,6 +29,7 @@ pub trait TermVisitor {
                   _: Self::Result)
                   -> Self::Result;
     fn leave_lit(&mut self, _: &Literal) -> Self::Result;
+    fn leave_builtin(&mut self, _: &BuiltinClosure, _: Vec<Self::Result>) -> Self::Result;
 }
 
 pub trait TermVisitorStrategy {
@@ -80,6 +85,16 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                                 result_stack.push(visitor.leave_lit(lit));
                             }
                         }
+                        Term::Builtin(ref builtin) => {
+                            if let Some(r) = visitor.enter_builtin(builtin) {
+                                result_stack.push(r);
+                            } else {
+                                stack.push(StackAction::BacktrackTerm(term));
+                                for arg in builtin.args() {
+                                    stack.push(StackAction::ProcessTerm(arg));
+                                }
+                            }
+                        }
                     }
                 }
                 StackAction::BacktrackTerm(term) => {
@@ -96,6 +111,13 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             let r_result = result_stack.pop().unwrap();
                             result_stack.push(visitor.leave_appl(l, r, l_result, r_result));
                         }
+                        Term::Builtin(ref builtin) => {
+                            let mut results = Vec::new();
+                            for _ in builtin.args() {
+                                results.push(result_stack.pop().unwrap());
+                            }
+                            result_stack.push(visitor.leave_builtin(builtin, results))
+                        }
                     }
                 }
             }
@@ -108,7 +130,7 @@ pub struct RecursiveVisitorStrategy;
 
 impl TermVisitorStrategy for RecursiveVisitorStrategy {
     fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
-        fn do_rec<'a, V: TermVisitor>(term: &'a Term, visitor: &mut V) -> V::Result {
+        fn do_rec<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
             match *term {
                 Term::Var(ref v) => {
                     if let Some(r) = visitor.enter_var(v) {
@@ -122,8 +144,7 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                         r
                     } else {
                         let rec_result = do_rec(b, visitor);
-                        let res = visitor.leave_abs(v, b, rec_result);
-                        res
+                        visitor.leave_abs(v, b, rec_result)
                     }
                 }
                 Term::Appl(ref l, ref r) => {
@@ -140,6 +161,17 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                         r
                     } else {
                         visitor.leave_lit(l)
+                    }
+                }
+                Term::Builtin(ref builtin) => {
+                    if let Some(r) = visitor.enter_builtin(builtin) {
+                        r
+                    } else {
+                        let mut results = Vec::new();
+                        for arg in builtin.args() {
+                            results.push(do_rec(arg, visitor));
+                        }
+                        visitor.leave_builtin(builtin, results)
                     }
                 }
             }

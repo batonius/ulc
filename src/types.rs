@@ -1,5 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
+use builtin::{BuiltinType, BuiltinClosure};
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct Variable {
@@ -39,6 +40,7 @@ pub enum Term {
     Abs(Variable, RcTerm),
     Appl(RcTerm, RcTerm),
     Lit(Literal),
+    Builtin(BuiltinClosure),
 }
 
 impl Term {
@@ -57,6 +59,10 @@ impl Term {
     pub fn num_lit_rc(val: isize) -> RcTerm {
         Rc::new(Term::Lit(Literal::Num(val)))
     }
+
+    pub fn builtin_rc(builtin_type: BuiltinType, args: Vec<RcTerm>) -> RcTerm {
+        Rc::new(Term::Builtin(BuiltinClosure::new(builtin_type, args)))
+    }
 }
 
 pub type RcTerm = Rc<Term>;
@@ -68,6 +74,7 @@ impl fmt::Display for Term {
             Term::Abs(ref var, ref term) => write!(f, "\\{:#}.{:#}", var, term),
             Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
             Term::Lit(ref lit) => lit.fmt(f),
+            Term::Builtin(ref builtin) => builtin.fmt(f),
         }
     }
 }

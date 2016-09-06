@@ -1,4 +1,5 @@
 use types::{Term, Variable, RcTerm};
+use builtin::BuiltinType;
 use combine::{many, many1, digit, letter, char, between, spaces, parser, Parser, ParserExt};
 use combine::primitives::{State, Stream, ParseResult};
 use super::TermParser;
@@ -28,6 +29,12 @@ fn term_parser<I>(input: State<I>) -> ParseResult<RcTerm, I>
                 }) as isize)
         }))
     };
+    let builtin_term = || {
+        lex_char('+')
+            .map(|_| Term::builtin_rc(BuiltinType::Add, vec![]))
+            .or(lex_char('-').map(|_| Term::builtin_rc(BuiltinType::Sub, vec![])))
+            .or(lex_char('?').map(|_| Term::builtin_rc(BuiltinType::If, vec![])))
+    };
     let var_term = || {
         letter()
             .skip(spaces())
@@ -37,13 +44,15 @@ fn term_parser<I>(input: State<I>) -> ParseResult<RcTerm, I>
         (lex_char('\\'), letter(), spaces(), lex_char('.'), parser(term_parser))
             .map(|t| Term::abs_rc(Variable::new(vec![t.1]), t.4))
     };
-    let without_appl = || spaces().with(abs_parser().or(var_term()).or(num_lit()).or(sub_term()));
+    let without_appl = || {
+        spaces().with(abs_parser().or(var_term()).or(builtin_term()).or(num_lit()).or(sub_term()))
+    };
     let mut appl_parser = (without_appl(), many(without_appl()))
         .map(|v: (RcTerm, Vec<RcTerm>)| {
             if v.1.is_empty() {
                 v.0
             } else {
-                v.1.into_iter().fold(v.0, |acc, t| Term::appl_rc(acc, t))
+                v.1.into_iter().fold(v.0, Term::appl_rc)
             }
         });
     appl_parser.parse_state(input)

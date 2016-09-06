@@ -1,6 +1,9 @@
+#![feature(slice_patterns)]
+
 extern crate combine;
 
 mod types;
+mod builtin;
 mod parse;
 mod visitor;
 mod reduct;

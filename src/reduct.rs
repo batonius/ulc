@@ -1,6 +1,7 @@
 use types::{Term, RcTerm, Variable, Literal};
 use visitor::{TermVisitor, TermVisitorStrategy};
 use std::marker::PhantomData;
+use builtin::BuiltinClosure;
 
 pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &RcTerm) -> RcTerm {
     struct VarSubstitutor<'a> {
@@ -51,6 +52,21 @@ pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &Rc
                                    r_res.unwrap_or_else(|| r.clone())))
             }
         }
+
+        fn leave_builtin(&mut self,
+                         builtin: &BuiltinClosure,
+                         results: Vec<Self::Result>)
+                         -> Self::Result {
+            if results.iter().all(Option::is_none) {
+                None
+            } else {
+                let results = results.into_iter()
+                    .zip(builtin.args().iter())
+                    .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
+                    .collect();
+                Some(Term::builtin_rc(builtin.builtin_type(), results))
+            }
+        }
     }
 
     let mut var_substitutor = VarSubstitutor {
@@ -87,11 +103,27 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
         if l_res.is_none() && r_res.is_none() {
             match **l {
                 Term::Abs(ref v, ref b) => Some(subs_var::<VS>(b, v, r)),
+                Term::Builtin(ref builtin) => builtin.apply_term(r),
                 _ => None,
             }
         } else {
             Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
                                r_res.unwrap_or_else(|| r.clone())))
+        }
+    }
+
+    fn leave_builtin(&mut self,
+                     builtin: &BuiltinClosure,
+                     results: Vec<Self::Result>)
+                     -> Self::Result {
+        if results.iter().all(Option::is_none) {
+            builtin.try_compute()
+        } else {
+            let results = results.into_iter()
+                .zip(builtin.args().iter())
+                .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
+                .collect();
+            Some(Term::builtin_rc(builtin.builtin_type(), results))
         }
     }
 }
@@ -115,8 +147,13 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
     fn enter_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
         match **l {
             Term::Abs(ref v, ref b) => Some(Some(subs_var::<VS>(b, v, r))),
+            Term::Builtin(ref builtin) => Some(builtin.apply_term(r)),
             _ => None,
         }
+    }
+
+    fn enter_builtin(&mut self, builtin: &BuiltinClosure) -> Option<Self::Result> {
+        builtin.try_compute().map(Some)
     }
 
     fn leave_appl(&mut self,
@@ -130,6 +167,21 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
         } else {
             Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
                                r_res.unwrap_or_else(|| r.clone())))
+        }
+    }
+
+    fn leave_builtin(&mut self,
+                     builtin: &BuiltinClosure,
+                     results: Vec<Self::Result>)
+                     -> Self::Result {
+        if results.iter().all(Option::is_none) {
+            None
+        } else {
+            let results = results.into_iter()
+                .zip(builtin.args().iter())
+                .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
+                .collect();
+            Some(Term::builtin_rc(builtin.builtin_type(), results))
         }
     }
 }
@@ -280,7 +332,9 @@ mod test {
         let tests = vec![("a", "a"),
                          ("(\\x.x) z", "z"),
                          ("(\\z. x ((\\y. z y) 1)) b", "x (b 1)"),
-                         ("(\\f.\\x.f x) (\\n.0) 100", "0")];
+                         ("(\\f.\\x.f x) (\\n.0) 100", "0"),
+                         ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
+                         ("(\\x.? x a b) 0", "b")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).unwrap();
@@ -299,7 +353,8 @@ mod test {
 
     #[test]
     fn beta_recution_lazy() {
-        let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10")];
+        let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10"),
+                         ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) 0", "42")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).unwrap();

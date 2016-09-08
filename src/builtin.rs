@@ -6,6 +6,9 @@ pub enum BuiltinType {
     Add,
     Sub,
     If,
+    Mul,
+    Div,
+    Eq,
 }
 
 impl fmt::Display for BuiltinType {
@@ -14,6 +17,9 @@ impl fmt::Display for BuiltinType {
             BuiltinType::Add => write!(f, "+"),
             BuiltinType::Sub => write!(f, "-"),
             BuiltinType::If => write!(f, "?"),
+            BuiltinType::Mul => write!(f, "*"),
+            BuiltinType::Div => write!(f, "/"),
+            BuiltinType::Eq => write!(f, "=")
         }
     }
 }
@@ -21,7 +27,11 @@ impl fmt::Display for BuiltinType {
 impl BuiltinType {
     fn arity(&self) -> usize {
         match *self {
-            BuiltinType::Add | BuiltinType::Sub => 2,
+            BuiltinType::Add |
+            BuiltinType::Sub |
+            BuiltinType::Mul |
+            BuiltinType::Div |
+            BuiltinType::Eq => 2,
             BuiltinType::If => 3,
         }
     }
@@ -75,27 +85,21 @@ impl BuiltinClosure {
         }
 
         match self.builtin_type {
-            BuiltinType::Add => BuiltinClosure::try_compute_add(&self.args),
-            BuiltinType::Sub => BuiltinClosure::try_compute_sub(&self.args),
+            BuiltinType::Add => BuiltinClosure::try_compute_num(&self.args, |a, b| a+b),
+            BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a-b),
+            BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a*b),
+            BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a/b),
+            BuiltinType::Eq => BuiltinClosure::try_compute_num(&self.args, |a, b| (a==b) as isize),
             BuiltinType::If => BuiltinClosure::try_compute_if(&self.args),
         }
     }
 
-    fn try_compute_add(args: &[RcTerm]) -> Option<RcTerm> {
+    fn try_compute_num<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
+    where F: FnOnce(isize, isize) -> isize {
         if let [ref a, ref b] = *args {
             if let (&Term::Lit(Literal::Num(ref x)),
                     &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
-                return Some(Term::num_lit_rc(x + y));
-            }
-        }
-        None
-    }
-
-    fn try_compute_sub(args: &[RcTerm]) -> Option<RcTerm> {
-        if let [ref a, ref b] = *args {
-            if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
-                return Some(Term::num_lit_rc(x - y));
+                return Some(Term::num_lit_rc(f(*x, *y)));
             }
         }
         None
@@ -109,4 +113,5 @@ impl BuiltinClosure {
         }
         None
     }
+
 }

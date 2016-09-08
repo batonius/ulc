@@ -91,9 +91,15 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
     fn leave_var(&mut self, _: &Variable) -> Self::Result {
         None
     }
-    fn leave_abs(&mut self, v: &Variable, _: &RcTerm, body_result: Self::Result) -> Self::Result {
-        body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
+
+    fn enter_abs(&mut self, _: &Variable, _: &RcTerm) -> Option<Self::Result> {
+        Some(None)
     }
+
+    fn leave_abs(&mut self, _: &Variable, _: &RcTerm, _: Self::Result) -> Self::Result {
+        None
+    }
+
     fn leave_appl(&mut self,
                   l: &RcTerm,
                   r: &RcTerm,
@@ -238,6 +244,12 @@ mod test {
     use types::Variable;
     use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
     use super::{StrictBetaStep, LazyBetaStep};
+    use test::Bencher;
+
+    static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) (\\f.\\n.(? (= n 1) 1 (* \
+                                      n (f (- n 1))))) 20";
+    static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
+                                             (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
 
     #[test]
     fn subs_vars() {
@@ -278,25 +290,6 @@ mod test {
                                           LazyBetaStep<IterativeVisitorStrategy>>(&from_term)
                            .unwrap_or(from_term.clone()),
                        to_term);
-            assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
-                                          StrictBetaStep<RecursiveVisitorStrategy>>(&from_term)
-                           .unwrap_or(from_term.clone()),
-                       to_term);
-            assert_eq!(super::beta_step::<IterativeVisitorStrategy,
-                                          StrictBetaStep<IterativeVisitorStrategy>>(&from_term)
-                           .unwrap_or(from_term.clone()),
-                       to_term);
-        }
-    }
-
-    #[test]
-    fn beta_step_strict() {
-        let tests = vec![("(\\z. x ((\\y. z y) 9)) b", "(\\z. x (z 9)) b")];
-
-        for (from, to) in tests {
-            let from_term = parse_term(from).unwrap();
-            let to_term = parse_term(to).unwrap();
-
             assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
                                           StrictBetaStep<RecursiveVisitorStrategy>>(&from_term)
                            .unwrap_or(from_term.clone()),
@@ -365,5 +358,17 @@ mod test {
             assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&from_term),
                        to_term);
         }
+    }
+
+    #[bench]
+    fn lazy_iter_reduction(b: &mut Bencher) {
+        let term = parse_term(FACTORIAL).unwrap();
+        b.iter(|| super::beta_reduction_lazy::<IterativeVisitorStrategy>(&term));
+    }
+
+    #[bench]
+    fn lazy_rec_reduction(b: &mut Bencher) {
+        let term = parse_term(FACTORIAL).unwrap();
+        b.iter(|| super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&term));
     }
 }

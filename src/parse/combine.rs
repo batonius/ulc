@@ -33,6 +33,9 @@ fn term_parser<I>(input: State<I>) -> ParseResult<RcTerm, I>
         lex_char('+')
             .map(|_| Term::builtin_rc(BuiltinType::Add, vec![]))
             .or(lex_char('-').map(|_| Term::builtin_rc(BuiltinType::Sub, vec![])))
+            .or(lex_char('*').map(|_| Term::builtin_rc(BuiltinType::Mul, vec![])))
+            .or(lex_char('/').map(|_| Term::builtin_rc(BuiltinType::Div, vec![])))
+            .or(lex_char('=').map(|_| Term::builtin_rc(BuiltinType::Eq, vec![])))
             .or(lex_char('?').map(|_| Term::builtin_rc(BuiltinType::If, vec![])))
     };
     let var_term = || {

@@ -1,5 +1,5 @@
 use types::{Term, RcTerm, Variable, Literal};
-use visitor::{TermVisitor, TermVisitorStrategy};
+use visitor::{TermVisitor, TermVisitorStrategy, IfBranchesPolicy};
 use std::marker::PhantomData;
 use builtin::BuiltinClosure;
 
@@ -67,6 +67,22 @@ pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &Rc
                 Some(Term::builtin_rc(builtin.builtin_type(), results))
             }
         }
+        fn leave_if(&mut self,
+                    i: &RcTerm,
+                    t: &RcTerm,
+                    e: &RcTerm,
+                    i_res: Self::Result,
+                    t_e_result: Option<(Self::Result, Self::Result)>)
+                    -> Self::Result {
+            let (t_res, e_res) = t_e_result.unwrap();
+            if i_res.is_none() && t_res.is_none() && e_res.is_none() {
+                None
+            } else {
+                Some(Term::if_rc(i_res.unwrap_or_else(|| i.clone()),
+                                 t_res.unwrap_or_else(|| t.clone()),
+                                 e_res.unwrap_or_else(|| e.clone())))
+            }
+        }
     }
 
     let mut var_substitutor = VarSubstitutor {
@@ -98,6 +114,10 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
 
     fn leave_abs(&mut self, _: &Variable, _: &RcTerm, _: Self::Result) -> Self::Result {
         None
+    }
+
+    fn enter_if(&mut self, _: &RcTerm, _: &RcTerm, _: &RcTerm) -> IfBranchesPolicy {
+        IfBranchesPolicy::DontProcessBranches
     }
 
     fn leave_appl(&mut self,
@@ -132,6 +152,25 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
             Some(Term::builtin_rc(builtin.builtin_type(), results))
         }
     }
+
+    fn leave_if(&mut self,
+                i: &RcTerm,
+                t: &RcTerm,
+                e: &RcTerm,
+                i_res: Self::Result,
+                _: Option<(Self::Result, Self::Result)>)
+                -> Self::Result {
+        match i_res {
+            None => {
+                if let Term::Lit(Literal::Bool(b)) = *i.as_ref() {
+                    Some(if b { t.clone() } else { e.clone() })
+                } else {
+                    None
+                }
+            }
+            Some(i) => Some(Term::if_rc(i, t.clone(), e.clone())),
+        }
+    }
 }
 
 pub struct LazyBetaStep<VS> {
@@ -148,6 +187,10 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
     }
     fn leave_abs(&mut self, v: &Variable, _: &RcTerm, body_result: Self::Result) -> Self::Result {
         body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
+    }
+
+    fn enter_if(&mut self, _: &RcTerm, _: &RcTerm, _: &RcTerm) -> IfBranchesPolicy {
+        IfBranchesPolicy::DontProcessBranches
     }
 
     fn enter_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
@@ -188,6 +231,21 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
                 .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
                 .collect();
             Some(Term::builtin_rc(builtin.builtin_type(), results))
+        }
+    }
+
+    fn leave_if(&mut self,
+                i: &RcTerm,
+                t: &RcTerm,
+                e: &RcTerm,
+                i_res: Self::Result,
+                _: Option<(Self::Result, Self::Result)>)
+                -> Self::Result {
+        let cond = i_res.unwrap_or_else(|| i.clone());
+        if let Term::Lit(Literal::Bool(b)) = *(cond.as_ref()) {
+            Some(if b { t.clone() } else { e.clone() })
+        } else {
+            None
         }
     }
 }
@@ -241,15 +299,17 @@ pub fn beta_reduction_lazy<VS>(term: &RcTerm) -> RcTerm
 #[cfg(test)]
 mod test {
     use parse::parse_term;
-    use types::Variable;
+    use types::{Term, Variable};
     use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
     use super::{StrictBetaStep, LazyBetaStep};
     use test::Bencher;
 
-    static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) (\\f.\\n.(? (= n 1) 1 (* \
-                                      n (f (- n 1))))) 20";
-    static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
-                                             (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) 20";
+    static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) \
+                                      (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
+    static STRICT_FACTORIAL: &'static str =
+        "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) (\\f.\\n.(if (= n 1) then 1 else (* n \
+         (f (- n 1))))) 20";
+    static FAC_20: isize = 2_432_902_008_176_640_000;
 
     #[test]
     fn subs_vars() {
@@ -327,7 +387,8 @@ mod test {
                          ("(\\z. x ((\\y. z y) 1)) b", "x (b 1)"),
                          ("(\\f.\\x.f x) (\\n.0) 100", "0"),
                          ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
-                         ("(\\x.? x a b) false", "b")];
+                         ("(\\x.? x a b) false", "b"),
+                         ("(\\x.if x then 1 else ((\\x.x x)(\\x.x x))) true", "1")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).unwrap();
@@ -363,12 +424,36 @@ mod test {
     #[bench]
     fn lazy_iter_reduction(b: &mut Bencher) {
         let term = parse_term(FACTORIAL).unwrap();
-        b.iter(|| super::beta_reduction_lazy::<IterativeVisitorStrategy>(&term));
+        b.iter(|| {
+            assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&term),
+                       Term::num_lit_rc(FAC_20))
+        });
     }
 
     #[bench]
     fn lazy_rec_reduction(b: &mut Bencher) {
         let term = parse_term(FACTORIAL).unwrap();
-        b.iter(|| super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&term));
+        b.iter(|| {
+            assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&term),
+                       Term::num_lit_rc(FAC_20))
+        });
+    }
+
+    #[bench]
+    fn strict_iter_reduction(b: &mut Bencher) {
+        let term = parse_term(STRICT_FACTORIAL).unwrap();
+        b.iter(|| {
+            assert_eq!(super::beta_reduction_strict::<IterativeVisitorStrategy>(&term),
+                       Term::num_lit_rc(FAC_20))
+        });
+    }
+
+    #[bench]
+    fn strict_rec_reduction(b: &mut Bencher) {
+        let term = parse_term(STRICT_FACTORIAL).unwrap();
+        b.iter(|| {
+            assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&term),
+                       Term::num_lit_rc(FAC_20))
+        });
     }
 }

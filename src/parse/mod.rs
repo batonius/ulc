@@ -30,7 +30,11 @@ mod test {
                                      Term::num_lit_rc(12)))),
                  ("(a) false",
                   Some(Term::appl_rc(Term::var_rc(Variable::new("a")),
-                                     Term::bool_lit_rc(false))))];
+                                     Term::bool_lit_rc(false)))),
+                 ("if true then 1 else (f a)",
+                  Some(Term::if_rc(Term::bool_lit_rc(true), Term::num_lit_rc(1),
+                                   Term::appl_rc(Term::var_rc(Variable::new("f")),
+                                                 Term::var_rc(Variable::new("a"))))))];
         for (s, t) in tests.into_iter() {
             assert_eq!(super::parse_term(s), t);
         }

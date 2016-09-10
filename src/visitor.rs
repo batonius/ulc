@@ -1,6 +1,11 @@
 use types::{Variable, RcTerm, Term, Literal};
 use builtin::BuiltinClosure;
 
+pub enum IfBranchesPolicy {
+    ProccessBranches,
+    DontProcessBranches,
+}
+
 pub trait TermVisitor {
     type Result;
 
@@ -19,6 +24,9 @@ pub trait TermVisitor {
     fn enter_builtin(&mut self, _: &BuiltinClosure) -> Option<Self::Result> {
         None
     }
+    fn enter_if(&mut self, _: &RcTerm, _: &RcTerm, _: &RcTerm) -> IfBranchesPolicy {
+        IfBranchesPolicy::ProccessBranches
+    }
 
     fn leave_var(&mut self, _: &Variable) -> Self::Result;
     fn leave_abs(&mut self, _: &Variable, _: &RcTerm, _: Self::Result) -> Self::Result;
@@ -30,6 +38,13 @@ pub trait TermVisitor {
                   -> Self::Result;
     fn leave_lit(&mut self, _: &Literal) -> Self::Result;
     fn leave_builtin(&mut self, _: &BuiltinClosure, _: Vec<Self::Result>) -> Self::Result;
+    fn leave_if(&mut self,
+                _: &RcTerm,
+                _: &RcTerm,
+                _: &RcTerm,
+                _: Self::Result,
+                _: Option<(Self::Result, Self::Result)>)
+                -> Self::Result;
 }
 
 pub trait TermVisitorStrategy {
@@ -43,6 +58,7 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
         enum StackAction<'a> {
             ProcessTerm(&'a Term),
             BacktrackTerm(&'a Term),
+            IfBranchesProcessed(bool),
         };
 
         let mut stack: Vec<StackAction> = Vec::new();
@@ -95,6 +111,22 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                                 }
                             }
                         }
+                        Term::If(ref i, ref t, ref e) => {
+                            match visitor.enter_if(i, t, e) {
+                                IfBranchesPolicy::DontProcessBranches => {
+                                    stack.push(StackAction::IfBranchesProcessed(false));
+                                    stack.push(StackAction::BacktrackTerm(term));
+                                    stack.push(StackAction::ProcessTerm(i));
+                                }
+                                IfBranchesPolicy::ProccessBranches => {
+                                    stack.push(StackAction::IfBranchesProcessed(true));
+                                    stack.push(StackAction::BacktrackTerm(term));
+                                    stack.push(StackAction::ProcessTerm(i));
+                                    stack.push(StackAction::ProcessTerm(t));
+                                    stack.push(StackAction::ProcessTerm(e));
+                                }
+                            }
+                        }
                     }
                 }
                 StackAction::BacktrackTerm(term) => {
@@ -116,9 +148,22 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             for _ in builtin.args() {
                                 results.push(result_stack.pop().unwrap());
                             }
-                            result_stack.push(visitor.leave_builtin(builtin, results))
+                            result_stack.push(visitor.leave_builtin(builtin, results));
+                        }
+                        Term::If(ref i, ref t, ref e) => {
+                            let i_result = result_stack.pop().unwrap();
+                            let t_e_result = if let StackAction::IfBranchesProcessed(true) =
+                                                    stack.pop().unwrap() {
+                                Some((result_stack.pop().unwrap(), result_stack.pop().unwrap()))
+                            } else {
+                                None
+                            };
+                            result_stack.push(visitor.leave_if(i, t, e, i_result, t_e_result));
                         }
                     }
+                }
+                StackAction::IfBranchesProcessed(_) => {
+                    panic!();
                 }
             }
         }
@@ -172,6 +217,20 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                             results.push(do_rec(arg, visitor));
                         }
                         visitor.leave_builtin(builtin, results)
+                    }
+                }
+                Term::If(ref i, ref t, ref e) => {
+                    match visitor.enter_if(i, t, e) {
+                        IfBranchesPolicy::DontProcessBranches => {
+                            let i_res = do_rec(i, visitor);
+                            visitor.leave_if(i, t, e, i_res, None)
+                        }
+                        IfBranchesPolicy::ProccessBranches => {
+                            let i_res = do_rec(i, visitor);
+                            let t_res = do_rec(t, visitor);
+                            let e_res = do_rec(e, visitor);
+                            visitor.leave_if(i, t, e, i_res, Some((t_res, e_res)))
+                        }
                     }
                 }
             }

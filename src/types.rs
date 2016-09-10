@@ -24,14 +24,14 @@ impl fmt::Display for Variable {
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum Literal {
     Num(isize),
-    Bool(bool)
+    Bool(bool),
 }
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Literal::Num(val) => write!(f, "{}", val),
-            Literal::Bool(val) => write!(f, "{}", val)
+            Literal::Bool(val) => write!(f, "{}", val),
         }
     }
 }
@@ -43,6 +43,7 @@ pub enum Term {
     Appl(RcTerm, RcTerm),
     Lit(Literal),
     Builtin(BuiltinClosure),
+    If(RcTerm, RcTerm, RcTerm),
 }
 
 impl Term {
@@ -69,6 +70,10 @@ impl Term {
     pub fn builtin_rc(builtin_type: BuiltinType, args: Vec<RcTerm>) -> RcTerm {
         Rc::new(Term::Builtin(BuiltinClosure::new(builtin_type, args)))
     }
+
+    pub fn if_rc(i: RcTerm, t: RcTerm, e: RcTerm) -> RcTerm {
+        Rc::new(Term::If(i, t, e))
+    }
 }
 
 pub type RcTerm = Rc<Term>;
@@ -81,6 +86,7 @@ impl fmt::Display for Term {
             Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
             Term::Lit(ref lit) => lit.fmt(f),
             Term::Builtin(ref builtin) => builtin.fmt(f),
+            Term::If(ref i, ref t, ref e) => write!(f, "if {:#} then {:#} else {:#}", i, t, e),
         }
     }
 }

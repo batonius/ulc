@@ -24,12 +24,14 @@ impl fmt::Display for Variable {
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum Literal {
     Num(isize),
+    Bool(bool)
 }
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Literal::Num(val) => write!(f, "{}", val),
+            Literal::Bool(val) => write!(f, "{}", val)
         }
     }
 }
@@ -58,6 +60,10 @@ impl Term {
 
     pub fn num_lit_rc(val: isize) -> RcTerm {
         Rc::new(Term::Lit(Literal::Num(val)))
+    }
+
+    pub fn bool_lit_rc(val: bool) -> RcTerm {
+        Rc::new(Term::Lit(Literal::Bool(val)))
     }
 
     pub fn builtin_rc(builtin_type: BuiltinType, args: Vec<RcTerm>) -> RcTerm {

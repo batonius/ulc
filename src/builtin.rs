@@ -89,7 +89,7 @@ impl BuiltinClosure {
             BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a-b),
             BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a*b),
             BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a/b),
-            BuiltinType::Eq => BuiltinClosure::try_compute_num(&self.args, |a, b| (a==b) as isize),
+            BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a==b),
             BuiltinType::If => BuiltinClosure::try_compute_if(&self.args),
         }
     }
@@ -105,13 +105,23 @@ impl BuiltinClosure {
         None
     }
 
-    fn try_compute_if(args: &[RcTerm]) -> Option<RcTerm> {
-        if let [ref a, ref b, ref c] = *args {
-            if let Term::Lit(Literal::Num(ref t)) = *a.as_ref() {
-                return Some(if *t == 0 { c.clone() } else { b.clone() });
+    fn try_compute_bool<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
+        where F: FnOnce(isize, isize) -> bool {
+        if let [ref a, ref b] = *args {
+            if let (&Term::Lit(Literal::Num(ref x)),
+                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
+                return Some(Term::bool_lit_rc(f(*x, *y)));
             }
         }
         None
     }
 
+    fn try_compute_if(args: &[RcTerm]) -> Option<RcTerm> {
+        if let [ref a, ref b, ref c] = *args {
+            if let Term::Lit(Literal::Bool(ref t)) = *a.as_ref() {
+                return Some(if *t { b.clone() } else { c.clone() });
+            }
+        }
+        None
+    }
 }

@@ -28,9 +28,9 @@ mod test {
                   Some(Term::appl_rc(Term::appl_rc(Term::builtin_rc(BuiltinType::Add, vec![]),
                                                    Term::var_rc(Variable::new("a"))),
                                      Term::num_lit_rc(12)))),
-                 ("(a) b",
+                 ("(a) false",
                   Some(Term::appl_rc(Term::var_rc(Variable::new("a")),
-                                     Term::var_rc(Variable::new("b")))))];
+                                     Term::bool_lit_rc(false))))];
         for (s, t) in tests.into_iter() {
             assert_eq!(super::parse_term(s), t);
         }

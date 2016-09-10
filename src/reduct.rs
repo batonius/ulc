@@ -249,7 +249,7 @@ mod test {
     static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) (\\f.\\n.(? (= n 1) 1 (* \
                                       n (f (- n 1))))) 20";
     static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
-                                             (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
+                                             (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) 20";
 
     #[test]
     fn subs_vars() {
@@ -327,7 +327,7 @@ mod test {
                          ("(\\z. x ((\\y. z y) 1)) b", "x (b 1)"),
                          ("(\\f.\\x.f x) (\\n.0) 100", "0"),
                          ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
-                         ("(\\x.? x a b) 0", "b")];
+                         ("(\\x.? x a b) false", "b")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).unwrap();
@@ -347,7 +347,7 @@ mod test {
     #[test]
     fn beta_recution_lazy() {
         let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10"),
-                         ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) 0", "42")];
+                         ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) false", "42")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).unwrap();

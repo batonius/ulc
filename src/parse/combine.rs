@@ -1,6 +1,6 @@
 use types::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
-use combine::{many, many1, digit, letter, char, between, spaces, parser, Parser, ParserExt};
+use combine::{many, string, many1, try, digit, letter, char, between, spaces, parser, Parser, ParserExt};
 use combine::primitives::{State, Stream, ParseResult};
 use super::TermParser;
 use std::iter::Iterator;
@@ -29,6 +29,11 @@ fn term_parser<I>(input: State<I>) -> ParseResult<RcTerm, I>
                 }) as isize)
         }))
     };
+    let bool_lit = || {
+        spaces().with(string("true")
+            .map(|_| Term::bool_lit_rc(true))
+            .or(string("false").map(|_| Term::bool_lit_rc(false))))
+    };
     let builtin_term = || {
         lex_char('+')
             .map(|_| Term::builtin_rc(BuiltinType::Add, vec![]))
@@ -48,7 +53,12 @@ fn term_parser<I>(input: State<I>) -> ParseResult<RcTerm, I>
             .map(|t| Term::abs_rc(Variable::new(vec![t.1]), t.4))
     };
     let without_appl = || {
-        spaces().with(abs_parser().or(var_term()).or(builtin_term()).or(num_lit()).or(sub_term()))
+        spaces().with(abs_parser()
+                      .or(builtin_term())
+                      .or(try(bool_lit()))
+                      .or(num_lit())
+                      .or(var_term())
+                      .or(sub_term()))
     };
     let mut appl_parser = (without_appl(), many(without_appl()))
         .map(|v: (RcTerm, Vec<RcTerm>)| {

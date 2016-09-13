@@ -1,4 +1,4 @@
-use types::{Term, Variable, RcTerm};
+use terms::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
 use combine::{many, string, many1, try, digit, letter, char, between, spaces, parser, Parser,
               ParserExt};

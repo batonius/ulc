@@ -1,4 +1,4 @@
-use types::RcTerm;
+use terms::RcTerm;
 
 #[cfg(feature="default")]
 pub mod term_parser;
@@ -23,7 +23,7 @@ pub fn parse_term(s: &str) -> Option<RcTerm> {
 
 #[cfg(test)]
 mod test {
-    use types::{Term, Variable};
+    use terms::{Term, Variable};
     use builtin::BuiltinType;
 
     #[test]

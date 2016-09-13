@@ -1,4 +1,4 @@
-use types::{Variable, RcTerm, Term, Literal};
+use terms::{Variable, RcTerm, Term, Literal};
 use builtin::BuiltinClosure;
 
 pub enum IfBranchesPolicy {

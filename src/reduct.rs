@@ -1,4 +1,4 @@
-use types::{Term, RcTerm, Variable, Literal};
+use terms::{Term, RcTerm, Variable, Literal};
 use visitor::{TermVisitor, TermVisitorStrategy, IfBranchesPolicy};
 use std::marker::PhantomData;
 use builtin::BuiltinClosure;
@@ -299,7 +299,7 @@ pub fn beta_reduction_lazy<VS>(term: &RcTerm) -> RcTerm
 #[cfg(test)]
 mod test {
     use parse::parse_term;
-    use types::{Term, Variable};
+    use terms::{Term, Variable};
     use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
     use super::{StrictBetaStep, LazyBetaStep};
     use test::Bencher;

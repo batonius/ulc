@@ -4,7 +4,7 @@
 extern crate combine;
 extern crate test;
 
-mod types;
+mod terms;
 mod builtin;
 mod parse;
 mod visitor;

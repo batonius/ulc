@@ -1,4 +1,4 @@
-use types::{RcTerm, Term, Literal};
+use terms::{RcTerm, Term, Literal};
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone, Copy)]

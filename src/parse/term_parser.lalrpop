@@ -1,4 +1,4 @@
-use types::{Term, Variable, RcTerm};
+use terms::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
 use std::str::FromStr;
 

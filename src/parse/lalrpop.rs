@@ -1,6 +1,6 @@
 use super::TermParser;
 use super::term_parser::parse_Term;
-use types::RcTerm;
+use terms::RcTerm;
 
 pub struct LalrpopParser;
 

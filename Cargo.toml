@@ -2,9 +2,18 @@
 name = "ulc"
 version = "0.1.0"
 authors = ["baton <batonius.kirov@gmail.com>"]
+build = "build.rs"
+
+[features]
+default = ["lalrpop-util", "lalrpop"]
+with-combine = ["combine"]
 
 [dependencies]
-combine = "*"
+combine = {version="*", optional=true}
+lalrpop-util = { git = "https://github.com/nikomatsakis/lalrpop", optional=true }
+
+[build-dependencies]
+lalrpop = { git = "https://github.com/nikomatsakis/lalrpop", optional=true }
 
 [profile.release]
 debug = true

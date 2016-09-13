@@ -1,0 +1,54 @@
+use types::{Term, Variable, RcTerm};
+use builtin::BuiltinType;
+use std::str::FromStr;
+
+grammar;
+
+pub Term: RcTerm = {
+    <Abs>,
+    <If>,
+    <Appl>,
+};
+
+SimpleTerm: RcTerm = {
+    "(" <Term> ")",
+    Num => Term::num_lit_rc(<>),
+    Bool => Term::bool_lit_rc(<>),
+    Builtin => Term::builtin_rc(<>, vec![]),
+    Var => Term::var_rc(<>),
+};
+
+Num: isize = {
+    r"[0-9]+" => isize::from_str(<>).unwrap()
+};
+
+Bool: bool = {
+    "true" => true,
+    "false" => false
+};
+
+Builtin: BuiltinType = {
+    "+" => BuiltinType::Add,
+    "-" => BuiltinType::Sub,
+    "*" => BuiltinType::Mul,
+    "/" => BuiltinType::Div,
+    "=" => BuiltinType::Eq,
+    "?" => BuiltinType::If
+};
+
+Var: Variable = {
+   r"[a-zA-Z][a-zA-Z0-9]*" => Variable::new(<>)
+};
+
+Abs: RcTerm = {
+    r"\\" <v:Var> "." <t:Term> => Term::abs_rc(v, t)
+};
+
+Appl: RcTerm = {
+    Appl SimpleTerm => Term::appl_rc(<>),
+    <SimpleTerm>
+};
+
+If: RcTerm = {
+    "if" <Term> "then" <Term> "else" <Term> => Term::if_rc(<>)
+};

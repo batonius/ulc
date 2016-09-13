@@ -1,2 +1,4 @@
 target
 *.bk
+src/parse/term_parser.rs
+Cargo.lock

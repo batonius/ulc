@@ -321,9 +321,9 @@ mod test {
                          ("\\z. z c (\\c. c)", &c, "10", "\\z. z 10 (\\c. c)"),
                          ("x", &a, "b", "x")];
         for (term, var, val, res) in tests.into_iter() {
-            let src_term = parse_term(term).unwrap();
-            let val_term = parse_term(val).unwrap();
-            let result_term = parse_term(res).unwrap();
+            let src_term = parse_term(term).expect(term);
+            let val_term = parse_term(val).expect(val);
+            let result_term = parse_term(res).expect(res);
             let rec_subs_result =
                 super::subs_var::<RecursiveVisitorStrategy>(&src_term, &var, &val_term);
             let iter_subs_result =
@@ -339,8 +339,8 @@ mod test {
         let tests = vec![("a", "a"), ("(\\x.x) z", "z"), ("(\\a.10) x", "10")];
 
         for (from, to) in tests {
-            let from_term = parse_term(from).unwrap();
-            let to_term = parse_term(to).unwrap();
+            let from_term = parse_term(from).expect(from);
+            let to_term = parse_term(to).expect(to);
 
             assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
                                           LazyBetaStep<RecursiveVisitorStrategy>>(&from_term)
@@ -366,8 +366,8 @@ mod test {
         let tests = vec![("(\\z. x ((\\y. z y) 9)) b", "x ((\\y. b y) 9)")];
 
         for (from, to) in tests {
-            let from_term = parse_term(from).unwrap();
-            let to_term = parse_term(to).unwrap();
+            let from_term = parse_term(from).expect(from);
+            let to_term = parse_term(to).expect(to);
 
             assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
                                           LazyBetaStep<RecursiveVisitorStrategy>>(&from_term)
@@ -391,8 +391,8 @@ mod test {
                          ("(\\x.if x then 1 else ((\\x.x x)(\\x.x x))) true", "1")];
 
         for (from, to) in tests {
-            let from_term = parse_term(from).unwrap();
-            let to_term = parse_term(to).unwrap();
+            let from_term = parse_term(from).expect(from);
+            let to_term = parse_term(to).expect(to);
 
             assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&from_term),
                        to_term);
@@ -411,8 +411,8 @@ mod test {
                          ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) false", "42")];
 
         for (from, to) in tests {
-            let from_term = parse_term(from).unwrap();
-            let to_term = parse_term(to).unwrap();
+            let from_term = parse_term(from).expect(from);
+            let to_term = parse_term(to).expect(to);
 
             assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&from_term),
                        to_term);
@@ -423,7 +423,7 @@ mod test {
 
     #[bench]
     fn lazy_iter_reduction(b: &mut Bencher) {
-        let term = parse_term(FACTORIAL).unwrap();
+        let term = parse_term(FACTORIAL).expect(FACTORIAL);
         b.iter(|| {
             assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&term),
                        Term::num_lit_rc(FAC_20))
@@ -432,7 +432,7 @@ mod test {
 
     #[bench]
     fn lazy_rec_reduction(b: &mut Bencher) {
-        let term = parse_term(FACTORIAL).unwrap();
+        let term = parse_term(FACTORIAL).expect(FACTORIAL);
         b.iter(|| {
             assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&term),
                        Term::num_lit_rc(FAC_20))
@@ -441,7 +441,7 @@ mod test {
 
     #[bench]
     fn strict_iter_reduction(b: &mut Bencher) {
-        let term = parse_term(STRICT_FACTORIAL).unwrap();
+        let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
         b.iter(|| {
             assert_eq!(super::beta_reduction_strict::<IterativeVisitorStrategy>(&term),
                        Term::num_lit_rc(FAC_20))
@@ -450,7 +450,7 @@ mod test {
 
     #[bench]
     fn strict_rec_reduction(b: &mut Bencher) {
-        let term = parse_term(STRICT_FACTORIAL).unwrap();
+        let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
         b.iter(|| {
             assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&term),
                        Term::num_lit_rc(FAC_20))

@@ -1,4 +1,6 @@
 #![feature(slice_patterns, test)]
+
+#[cfg(feature="with-combine")]
 extern crate combine;
 extern crate test;
 
@@ -18,7 +20,7 @@ fn main() {
         }
         let term = parse::parse_term(&input).expect("Parsing error");
         println!("{:#}", term);
-        println!("{:#}",
-                 reduct::beta_reduction_strict::<visitor::IterativeVisitorStrategy>(&term));
+        // println!("{:#}",
+        //          reduct::beta_reduction_strict::<visitor::IterativeVisitorStrategy>(&term));
     }
 }

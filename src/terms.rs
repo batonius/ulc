@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use builtin::{BuiltinType, BuiltinClosure};
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Variable {
     var_name: String,
 }
@@ -21,7 +21,7 @@ impl fmt::Display for Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Literal {
     Num(isize),
     Bool(bool),
@@ -36,7 +36,7 @@ impl fmt::Display for Literal {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Term {
     Var(Variable),
     Abs(Variable, RcTerm),

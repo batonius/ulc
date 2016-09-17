@@ -37,7 +37,7 @@ impl BuiltinType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct BuiltinClosure {
     builtin_type: BuiltinType,
     args: Vec<RcTerm>,

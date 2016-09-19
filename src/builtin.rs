@@ -47,7 +47,7 @@ impl fmt::Display for BuiltinClosure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let _ = write!(f, "({:#} ", self.builtin_type);
         for arg in &self.args {
-            let _ = write!(f, "{:#} ", arg);
+            let _ = write!(f, "{:#} ", &*arg.borrow());
         }
         write!(f, ") ")
     }
@@ -98,7 +98,7 @@ impl BuiltinClosure {
     where F: FnOnce(isize, isize) -> isize {
         if let [ref a, ref b] = *args {
             if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
+                    &Term::Lit(Literal::Num(ref y))) = (&*a.borrow(), &*b.borrow()) {
                 return Some(Term::num_lit_rc(f(*x, *y)));
             }
         }
@@ -109,7 +109,7 @@ impl BuiltinClosure {
         where F: FnOnce(isize, isize) -> bool {
         if let [ref a, ref b] = *args {
             if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
+                    &Term::Lit(Literal::Num(ref y))) = (&*a.borrow(), &*b.borrow()) {
                 return Some(Term::bool_lit_rc(f(*x, *y)));
             }
         }
@@ -118,7 +118,7 @@ impl BuiltinClosure {
 
     fn try_compute_if(args: &[RcTerm]) -> Option<RcTerm> {
         if let [ref a, ref b, ref c] = *args {
-            if let Term::Lit(Literal::Bool(ref t)) = *a.as_ref() {
+            if let Term::Lit(Literal::Bool(ref t)) = *a.borrow() {
                 return Some(if *t { b.clone() } else { c.clone() });
             }
         }

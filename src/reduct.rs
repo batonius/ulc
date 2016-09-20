@@ -217,15 +217,19 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
                   l_res: Self::Result,
                   r_res: Self::Result)
                   -> Self::Result {
-        if l_res.is_none() && r_res.is_none() {
-            match *l.borrow() {
-                Term::Abs(ref v, ref b) => Some(subs_var::<VS>(b, v, r)),
-                Term::Builtin(ref builtin) => builtin.apply_term(r),
-                _ => None,
+        let both_none = l_res.is_none() && r_res.is_none();
+        let l = l_res.as_ref().unwrap_or(l);
+        let r = r_res.as_ref().unwrap_or(r);
+        match *l.borrow() {
+            Term::Abs(ref v, ref b) => Some(subs_var::<VS>(b, v, r)),
+            Term::Builtin(ref builtin) => builtin.apply_term(r),
+            _ => {
+                if both_none {
+                    None
+                } else {
+                    Some(Term::appl_rc(l.clone(), r.clone()))
+                }
             }
-        } else {
-            Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
-                               r_res.unwrap_or_else(|| r.clone())))
         }
     }
 
@@ -240,7 +244,8 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
                 .zip(builtin.args().iter())
                 .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
                 .collect();
-            Some(Term::builtin_rc(builtin.builtin_type(), results))
+            let bi = BuiltinClosure::new(builtin.builtin_type(), results);
+            bi.try_compute().or_else(|| Some(Term::raw_builtin_rc(bi)))
         }
     }
 
@@ -251,15 +256,16 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
                 i_res: Self::Result,
                 _: Option<(Self::Result, Self::Result)>)
                 -> Self::Result {
-        match i_res {
-            None => {
-                if let Term::Lit(Literal::Bool(b)) = *i.borrow() {
-                    Some(if b { t.clone() } else { e.clone() })
-                } else {
-                    None
-                }
+        let i_is_none = i_res.is_none();
+        let i = i_res.as_ref().unwrap_or(i);
+        if let Term::Lit(Literal::Bool(b)) = *i.borrow() {
+            Some(if b { t.clone() } else { e.clone() })
+        } else {
+            if i_is_none {
+                None
+            } else {
+                Some(Term::if_rc(i.clone(), t.clone(), e.clone()))
             }
-            Some(i) => Some(Term::if_rc(i, t.clone(), e.clone())),
         }
     }
 }

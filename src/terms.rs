@@ -78,6 +78,10 @@ impl Term {
         Rc::new(RefCell::new(Term::Builtin(BuiltinClosure::new(builtin_type, args))))
     }
 
+    pub fn raw_builtin_rc(builtin: BuiltinClosure) -> RcTerm {
+        Rc::new(RefCell::new(Term::Builtin(builtin)))
+    }
+
     pub fn if_rc(i: RcTerm, t: RcTerm, e: RcTerm) -> RcTerm {
         Rc::new(RefCell::new(Term::If(i, t, e)))
     }

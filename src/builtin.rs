@@ -19,7 +19,7 @@ impl fmt::Display for BuiltinType {
             BuiltinType::If => write!(f, "?"),
             BuiltinType::Mul => write!(f, "*"),
             BuiltinType::Div => write!(f, "/"),
-            BuiltinType::Eq => write!(f, "=")
+            BuiltinType::Eq => write!(f, "="),
         }
     }
 }
@@ -27,17 +27,14 @@ impl fmt::Display for BuiltinType {
 impl BuiltinType {
     fn arity(&self) -> usize {
         match *self {
-            BuiltinType::Add |
-            BuiltinType::Sub |
-            BuiltinType::Mul |
-            BuiltinType::Div |
+            BuiltinType::Add | BuiltinType::Sub | BuiltinType::Mul | BuiltinType::Div |
             BuiltinType::Eq => 2,
             BuiltinType::If => 3,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BuiltinClosure {
     builtin_type: BuiltinType,
     args: Vec<RcTerm>,
@@ -45,9 +42,9 @@ pub struct BuiltinClosure {
 
 impl fmt::Display for BuiltinClosure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let _ = write!(f, "({:#} ", self.builtin_type);
+        let _ = write!(f, "({:#}", self.builtin_type);
         for arg in &self.args {
-            let _ = write!(f, "{:#} ", &*arg.borrow());
+            let _ = write!(f, "_{:#}", &*arg.borrow());
         }
         write!(f, ") ")
     }
@@ -71,8 +68,21 @@ impl BuiltinClosure {
         }
     }
 
+    pub fn apply_term_mut(&mut self, term: &RcTerm) -> bool {
+        if self.args.len() <= self.builtin_type.arity() {
+            self.args.push(term.clone());
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn args(&self) -> &Vec<RcTerm> {
         &self.args
+    }
+
+    pub fn args_mut(&mut self) -> &mut Vec<RcTerm> {
+        &mut self.args
     }
 
     pub fn builtin_type(&self) -> BuiltinType {
@@ -85,20 +95,21 @@ impl BuiltinClosure {
         }
 
         match self.builtin_type {
-            BuiltinType::Add => BuiltinClosure::try_compute_num(&self.args, |a, b| a+b),
-            BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a-b),
-            BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a*b),
-            BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a/b),
-            BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a==b),
+            BuiltinType::Add => BuiltinClosure::try_compute_num(&self.args, |a, b| a + b),
+            BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a - b),
+            BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a * b),
+            BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a / b),
+            BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a == b),
             BuiltinType::If => BuiltinClosure::try_compute_if(&self.args),
         }
     }
 
     fn try_compute_num<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
-    where F: FnOnce(isize, isize) -> isize {
+        where F: FnOnce(isize, isize) -> isize
+    {
         if let [ref a, ref b] = *args {
-            if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (&*a.borrow(), &*b.borrow()) {
+            if let (&Term::Lit(Literal::Num(ref x)), &Term::Lit(Literal::Num(ref y))) =
+                   (&*a.borrow(), &*b.borrow()) {
                 return Some(Term::num_lit_rc(f(*x, *y)));
             }
         }
@@ -106,10 +117,11 @@ impl BuiltinClosure {
     }
 
     fn try_compute_bool<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
-        where F: FnOnce(isize, isize) -> bool {
+        where F: FnOnce(isize, isize) -> bool
+    {
         if let [ref a, ref b] = *args {
-            if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (&*a.borrow(), &*b.borrow()) {
+            if let (&Term::Lit(Literal::Num(ref x)), &Term::Lit(Literal::Num(ref y))) =
+                   (&*a.borrow(), &*b.borrow()) {
                 return Some(Term::bool_lit_rc(f(*x, *y)));
             }
         }

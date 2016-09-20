@@ -22,7 +22,7 @@ impl fmt::Display for Variable {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Num(isize),
     Bool(bool),
@@ -39,7 +39,7 @@ impl fmt::Display for Literal {
 
 pub type RcTerm = Rc<RefCell<Term>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Term {
     Var(Variable),
     Abs(Variable, RcTerm),
@@ -62,6 +62,10 @@ impl Term {
         Rc::new(RefCell::new(Term::Appl(l, r)))
     }
 
+    pub fn lit_rc(l: Literal) -> RcTerm {
+        Rc::new(RefCell::new(Term::Lit(l)))
+    }
+
     pub fn num_lit_rc(val: isize) -> RcTerm {
         Rc::new(RefCell::new(Term::Lit(Literal::Num(val))))
     }
@@ -78,6 +82,23 @@ impl Term {
         Rc::new(RefCell::new(Term::If(i, t, e)))
     }
 }
+
+pub fn deep_copy_term(term: &RcTerm) -> RcTerm {
+    match *term.borrow() {
+        Term::Var(ref v) => Term::var_rc(v.clone()),
+        Term::Appl(ref l, ref r) => Term::appl_rc(deep_copy_term(l), deep_copy_term(r)),
+        Term::Abs(ref v, ref b) => Term::abs_rc(v.clone(), deep_copy_term(b)),
+        Term::Lit(ref l) => Term::lit_rc(l.clone()),
+        Term::Builtin(ref builtin) => {
+            let args = builtin.args().clone().iter().map(deep_copy_term).collect();
+            Term::builtin_rc(builtin.builtin_type(), args)
+        }
+        Term::If(ref i, ref t, ref e) => {
+            Term::if_rc(deep_copy_term(i), deep_copy_term(t), deep_copy_term(e))
+        }
+    }
+}
+
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

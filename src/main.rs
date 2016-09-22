@@ -18,9 +18,7 @@ fn main() {
         if input.is_empty() {
             break;
         }
-        let mut term = parse::parse_term(&input).expect("Parsing error");
-        println!("{:#}", &*term.borrow());
-        reduct::beta_reduct_mut(&mut term);
+        let term = parse::parse_term(&input).expect("Parsing error");
         println!("{:#}", &*term.borrow());
         // println!("{:#}",
         //          reduct::beta_reduction_strict::<visitor::IterativeVisitorStrategy>(&term));

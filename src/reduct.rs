@@ -1,98 +1,7 @@
-use terms::{Term, RcTerm, Variable, Literal, deep_copy_term};
+use terms::{Term, RcTerm, Variable, Literal};
 use visitor::{TermVisitor, TermVisitorStrategy, IfBranchesPolicy};
 use std::marker::PhantomData;
 use builtin::BuiltinClosure;
-
-pub fn subs_var_mut(term: &mut RcTerm, var: &Variable, val: &RcTerm) {
-    fn do_subs(bound_vars: &mut Vec<Variable>, term: &mut RcTerm, var: &Variable, val: &RcTerm) {
-        let result = match *term.borrow_mut() {
-            Term::Var(ref v) => {
-                if bound_vars.iter().any(|x| x == var) || v != var {
-                    None
-                } else {
-                    Some(deep_copy_term(val))
-                }
-            }
-            Term::Appl(ref mut l, ref mut r) => {
-                do_subs(bound_vars, l, var, val);
-                do_subs(bound_vars, r, var, val);
-                None
-            }
-            Term::Abs(ref v, ref mut b) => {
-                bound_vars.push(v.clone());
-                do_subs(bound_vars, b, var, val);
-                bound_vars.pop();
-                None
-            }
-            Term::Lit(..) => None,
-            Term::Builtin(ref mut builtin) => {
-                for a in builtin.args_mut().iter_mut() {
-                    do_subs(bound_vars, a, var, val);
-                }
-                None
-            }
-            Term::If(ref mut i, ref mut t, ref mut e) => {
-                do_subs(bound_vars, i, var, val);
-                do_subs(bound_vars, t, var, val);
-                do_subs(bound_vars, e, var, val);
-                None
-            }
-        };
-        if let Some(r) = result {
-            *term = r;
-        }
-    }
-    let mut bound_vars = Vec::new();
-    do_subs(&mut bound_vars, term, var, val)
-}
-
-pub fn beta_reduct_mut(term: &mut RcTerm) {
-    let result = match *term.borrow_mut() {
-        Term::Lit(..) | Term::Var(..) | Term::Abs(..) => None,
-        Term::Appl(ref mut l, ref mut r) => {
-            beta_reduct_mut(l);
-            beta_reduct_mut(r);
-            match *l.borrow_mut() {
-                Term::Abs(ref v, ref mut b) => {
-                    subs_var_mut(b, v, r);
-                    beta_reduct_mut(b);
-                    Some(b.clone())
-                }
-                Term::Builtin(ref mut builtin) => {
-                    if builtin.apply_term_mut(r) {
-                        builtin.try_compute().or_else(|| Some(l.clone()))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            }
-        }
-        Term::Builtin(ref mut builtin) => {
-            for a in builtin.args_mut().iter_mut() {
-                beta_reduct_mut(a);
-            }
-            builtin.try_compute()
-        }
-        Term::If(ref mut i, ref mut t, ref mut e) => {
-            beta_reduct_mut(i);
-            if let Term::Lit(Literal::Bool(b)) = *i.borrow() {
-                if b {
-                    beta_reduct_mut(t);
-                    Some(t.clone())
-                } else {
-                    beta_reduct_mut(e);
-                    Some(e.clone())
-                }
-            } else {
-                None
-            }
-        }
-    };
-    if let Some(r) = result {
-        *term = r;
-    }
-}
 
 pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &RcTerm) -> RcTerm {
     struct VarSubstitutor<'a> {
@@ -340,7 +249,7 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
                 -> Self::Result {
         let cond = i_res.unwrap_or_else(|| i.clone());
         let cond = cond.borrow();
-        if let Term::Lit(Literal::Bool(ref b)) = *cond {
+        if let &Term::Lit(Literal::Bool(ref b)) = &*cond {
             Some(if *b { t.clone() } else { e.clone() })
         } else {
             None
@@ -397,16 +306,16 @@ pub fn beta_reduction_lazy<VS>(term: &RcTerm) -> RcTerm
 #[cfg(test)]
 mod test {
     use parse::parse_term;
-    use terms::{Term, Variable, deep_copy_term};
+    use terms::{Term, Variable};
     use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
     use super::{StrictBetaStep, LazyBetaStep};
     use test::Bencher;
 
     static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) \
                                       (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
-    static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\y.f (\\u.(y y u)))) \
-                                             (\\g.\\n.(if (= n 1) then 1 else (* n (g (- n 1))))) \
-                                             20";
+    static STRICT_FACTORIAL: &'static str =
+        "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) (\\f.\\n.(if (= n 1) then 1 else (* n \
+         (f (- n 1))))) 20";
     static FAC_20: isize = 2_432_902_008_176_640_000;
 
     #[test]
@@ -429,25 +338,6 @@ mod test {
 
             assert_eq!(rec_subs_result, result_term);
             assert_eq!(iter_subs_result, result_term);
-        }
-    }
-
-    #[test]
-    fn subs_vars_mut() {
-        let a = Variable::new("a");
-        let b = Variable::new("b");
-        let c = Variable::new("c");
-        let tests = vec![("a", &a, "b", "b"),
-                         ("b x", &b, "\\n.n", "(\\n.n) x"),
-                         ("\\z. z c (\\c. c)", &c, "10", "\\z. z 10 (\\c. c)"),
-                         ("x", &a, "b", "x")];
-        for (term, var, val, res) in tests.into_iter() {
-            let mut src_term = parse_term(term).expect(term);
-            let val_term = parse_term(val).expect(val);
-            let result_term = parse_term(res).expect(res);
-            super::subs_var_mut(&mut src_term, &var, &val_term);
-
-            assert_eq!(src_term, result_term);
         }
     }
 
@@ -523,26 +413,6 @@ mod test {
     }
 
     #[test]
-    fn beta_recution_mut() {
-        let tests = vec![("a", "a"),
-                         ("(\\x.x) z", "z"),
-                         ("(\\z. x ((\\y. z y) 1)) b", "x (b 1)"),
-                         ("(\\f.\\x.f x) (\\n.0) 100", "0"),
-                         ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
-                         ("(\\x.? x a b) false", "b"),
-                         ("(\\x.if x then 1 else ((\\x.x x)(\\x.x x))) true", "1")];
-
-        for (from, to) in tests {
-            let mut from_term = parse_term(from).expect(from);
-            let to_term = parse_term(to).expect(to);
-
-            super::beta_reduct_mut(&mut from_term);
-
-            assert_eq!(from_term, to_term);
-        }
-    }
-
-    #[test]
     fn beta_recution_lazy() {
         let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10"),
                          ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) false", "42")];
@@ -591,16 +461,6 @@ mod test {
         b.iter(|| {
             assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&term),
                        Term::num_lit_rc(FAC_20))
-        });
-    }
-
-    #[bench]
-    fn strict_mut_reduction(b: &mut Bencher) {
-        let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
-        b.iter(|| {
-            let mut t2 = deep_copy_term(&term);
-            super::beta_reduct_mut(&mut t2);
-            assert_eq!(t2, Term::num_lit_rc(FAC_20))
         });
     }
 }

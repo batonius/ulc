@@ -48,28 +48,28 @@ pub trait TermVisitor {
 }
 
 pub trait TermVisitorStrategy {
-    fn visit<V: TermVisitor>(term: &RcTerm, visitor: &mut V) -> V::Result;
+    fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result;
 }
 
 pub struct IterativeVisitorStrategy;
 
 impl TermVisitorStrategy for IterativeVisitorStrategy {
-    fn visit<V: TermVisitor>(term: &RcTerm, visitor: &mut V) -> V::Result {
-        enum StackAction {
-            ProcessTerm(RcTerm),
-            BacktrackTerm(RcTerm),
+    fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
+        enum StackAction<'a> {
+            ProcessTerm(&'a Term),
+            BacktrackTerm(&'a Term),
             IfBranchesProcessed(bool),
         };
 
         let mut stack: Vec<StackAction> = Vec::new();
         let mut result_stack: Vec<V::Result> = Vec::new();
 
-        stack.push(StackAction::ProcessTerm(term.clone()));
+        stack.push(StackAction::ProcessTerm(term));
 
         while let Some(stack_action) = stack.pop() {
             match stack_action {
                 StackAction::ProcessTerm(term) => {
-                    match *term.borrow() {
+                    match *term {
                         Term::Var(ref v) => {
                             if let Some(r) = visitor.enter_var(v) {
                                 result_stack.push(r);
@@ -81,17 +81,17 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             if let Some(r) = visitor.enter_abs(v, b) {
                                 result_stack.push(r);
                             } else {
-                                stack.push(StackAction::BacktrackTerm(term.clone()));
-                                stack.push(StackAction::ProcessTerm(b.clone()));
+                                stack.push(StackAction::BacktrackTerm(term));
+                                stack.push(StackAction::ProcessTerm(b));
                             }
                         }
                         Term::Appl(ref l, ref r) => {
                             if let Some(r) = visitor.enter_appl(l, r) {
                                 result_stack.push(r);
                             } else {
-                                stack.push(StackAction::BacktrackTerm(term.clone()));
-                                stack.push(StackAction::ProcessTerm(l.clone()));
-                                stack.push(StackAction::ProcessTerm(r.clone()));
+                                stack.push(StackAction::BacktrackTerm(term));
+                                stack.push(StackAction::ProcessTerm(l));
+                                stack.push(StackAction::ProcessTerm(r));
                             }
                         }
                         Term::Lit(ref lit) => {
@@ -105,9 +105,9 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             if let Some(r) = visitor.enter_builtin(builtin) {
                                 result_stack.push(r);
                             } else {
-                                stack.push(StackAction::BacktrackTerm(term.clone()));
+                                stack.push(StackAction::BacktrackTerm(term));
                                 for arg in builtin.args() {
-                                    stack.push(StackAction::ProcessTerm(arg.clone()));
+                                    stack.push(StackAction::ProcessTerm(arg));
                                 }
                             }
                         }
@@ -115,22 +115,22 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
                             match visitor.enter_if(i, t, e) {
                                 IfBranchesPolicy::DontProcessBranches => {
                                     stack.push(StackAction::IfBranchesProcessed(false));
-                                    stack.push(StackAction::BacktrackTerm(term.clone()));
-                                    stack.push(StackAction::ProcessTerm(i.clone()));
+                                    stack.push(StackAction::BacktrackTerm(term));
+                                    stack.push(StackAction::ProcessTerm(i));
                                 }
                                 IfBranchesPolicy::ProccessBranches => {
                                     stack.push(StackAction::IfBranchesProcessed(true));
-                                    stack.push(StackAction::BacktrackTerm(term.clone()));
-                                    stack.push(StackAction::ProcessTerm(i.clone()));
-                                    stack.push(StackAction::ProcessTerm(t.clone()));
-                                    stack.push(StackAction::ProcessTerm(e.clone()));
+                                    stack.push(StackAction::BacktrackTerm(term));
+                                    stack.push(StackAction::ProcessTerm(i));
+                                    stack.push(StackAction::ProcessTerm(t));
+                                    stack.push(StackAction::ProcessTerm(e));
                                 }
                             }
                         }
                     }
                 }
                 StackAction::BacktrackTerm(term) => {
-                    match *term.borrow() {
+                    match *term {
                         Term::Var(..) | Term::Lit(..) => {
                             panic!();
                         }
@@ -174,7 +174,7 @@ impl TermVisitorStrategy for IterativeVisitorStrategy {
 pub struct RecursiveVisitorStrategy;
 
 impl TermVisitorStrategy for RecursiveVisitorStrategy {
-    fn visit<V: TermVisitor>(term: &RcTerm, visitor: &mut V) -> V::Result {
+    fn visit<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
         fn do_rec<V: TermVisitor>(term: &Term, visitor: &mut V) -> V::Result {
             match *term {
                 Term::Var(ref v) => {
@@ -188,7 +188,7 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                     if let Some(r) = visitor.enter_abs(v, b) {
                         r
                     } else {
-                        let rec_result = do_rec(&*b.borrow(), visitor);
+                        let rec_result = do_rec(b, visitor);
                         visitor.leave_abs(v, b, rec_result)
                     }
                 }
@@ -196,8 +196,8 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                     if let Some(r) = visitor.enter_appl(l, r) {
                         r
                     } else {
-                        let l_res = do_rec(&*l.borrow(), visitor);
-                        let r_res = do_rec(&*r.borrow(), visitor);
+                        let l_res = do_rec(l, visitor);
+                        let r_res = do_rec(r, visitor);
                         visitor.leave_appl(l, r, l_res, r_res)
                     }
                 }
@@ -214,7 +214,7 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                     } else {
                         let mut results = Vec::new();
                         for arg in builtin.args() {
-                            results.push(do_rec(&*arg.borrow(), visitor));
+                            results.push(do_rec(arg, visitor));
                         }
                         visitor.leave_builtin(builtin, results)
                     }
@@ -222,13 +222,13 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
                 Term::If(ref i, ref t, ref e) => {
                     match visitor.enter_if(i, t, e) {
                         IfBranchesPolicy::DontProcessBranches => {
-                            let i_res = do_rec(&*i.borrow(), visitor);
+                            let i_res = do_rec(i, visitor);
                             visitor.leave_if(i, t, e, i_res, None)
                         }
                         IfBranchesPolicy::ProccessBranches => {
-                            let i_res = do_rec(&*i.borrow(), visitor);
-                            let t_res = do_rec(&*t.borrow(), visitor);
-                            let e_res = do_rec(&*e.borrow(), visitor);
+                            let i_res = do_rec(i, visitor);
+                            let t_res = do_rec(t, visitor);
+                            let e_res = do_rec(e, visitor);
                             visitor.leave_if(i, t, e, i_res, Some((t_res, e_res)))
                         }
                     }
@@ -236,6 +236,12 @@ impl TermVisitorStrategy for RecursiveVisitorStrategy {
             }
         }
 
-        do_rec(&*term.borrow(), visitor)
+        do_rec(term, visitor)
+    }
+}
+
+impl Term {
+    pub fn visit<V: TermVisitor, S: TermVisitorStrategy>(&self, visitor: &mut V) -> V::Result {
+        S::visit(self, visitor)
     }
 }

@@ -19,7 +19,7 @@ fn main() {
             break;
         }
         let term = parse::parse_term(&input).expect("Parsing error");
-        println!("{:#}", &*term.borrow());
+        println!("{:#}", term);
         // println!("{:#}",
         //          reduct::beta_reduction_strict::<visitor::IterativeVisitorStrategy>(&term));
     }

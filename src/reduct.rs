@@ -90,7 +90,7 @@ pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &Rc
         val: val,
         bound_vars: Vec::new(),
     };
-    VS::visit(term, &mut var_substitutor).unwrap_or_else(|| term.clone())
+    term.visit::<VarSubstitutor, VS>(&mut var_substitutor).unwrap_or_else(|| term.clone())
 }
 
 pub trait BetaRecutionStrategy: TermVisitor + Default {}
@@ -129,7 +129,7 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
         let both_none = l_res.is_none() && r_res.is_none();
         let l = l_res.as_ref().unwrap_or(l);
         let r = r_res.as_ref().unwrap_or(r);
-        match *l.borrow() {
+        match *l.as_ref() {
             Term::Abs(ref v, ref b) => Some(subs_var::<VS>(b, v, r)),
             Term::Builtin(ref builtin) => builtin.apply_term(r),
             _ => {
@@ -167,7 +167,7 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
                 -> Self::Result {
         let i_is_none = i_res.is_none();
         let i = i_res.as_ref().unwrap_or(i);
-        if let Term::Lit(Literal::Bool(b)) = *i.borrow() {
+        if let Term::Lit(Literal::Bool(b)) = *i.as_ref() {
             Some(if b { t.clone() } else { e.clone() })
         } else {
             if i_is_none {
@@ -200,7 +200,7 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
     }
 
     fn enter_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
-        match *l.borrow() {
+        match **l {
             Term::Abs(ref v, ref b) => Some(Some(subs_var::<VS>(b, v, r))),
             Term::Builtin(ref builtin) => Some(builtin.apply_term(r)),
             _ => None,
@@ -248,9 +248,8 @@ impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
                 _: Option<(Self::Result, Self::Result)>)
                 -> Self::Result {
         let cond = i_res.unwrap_or_else(|| i.clone());
-        let cond = cond.borrow();
-        if let &Term::Lit(Literal::Bool(ref b)) = &*cond {
-            Some(if *b { t.clone() } else { e.clone() })
+        if let Term::Lit(Literal::Bool(b)) = *(cond.as_ref()) {
+            Some(if b { t.clone() } else { e.clone() })
         } else {
             None
         }
@@ -277,7 +276,7 @@ pub fn beta_step<VS, BRS>(term: &RcTerm) -> Option<RcTerm>
           BRS: BetaRecutionStrategy<Result = Option<RcTerm>>
 {
     let mut beta_stepper = BRS::default();
-    VS::visit(term, &mut beta_stepper)
+    term.visit::<BRS, VS>(&mut beta_stepper)
 }
 
 fn beta_reduction<VS, BRS>(term: &RcTerm) -> RcTerm

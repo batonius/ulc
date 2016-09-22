@@ -45,9 +45,9 @@ pub struct BuiltinClosure {
 
 impl fmt::Display for BuiltinClosure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let _ = write!(f, "({:#} ", self.builtin_type);
+        let _ = write!(f, "({:#}", self.builtin_type);
         for arg in &self.args {
-            let _ = write!(f, "{:#} ", arg);
+            let _ = write!(f, " {:#}", arg);
         }
         write!(f, ") ")
     }

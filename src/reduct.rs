@@ -1,23 +1,16 @@
 use terms::{Term, RcTerm, Variable, Literal};
-use visitor::{TermVisitor, TermVisitorStrategy, IfBranchesPolicy};
-use std::marker::PhantomData;
 use builtin::BuiltinClosure;
+use folder::*;
 
-pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &RcTerm) -> RcTerm {
+pub fn subs_var(term: &RcTerm, var: &Variable, val: &RcTerm) -> RcTerm {
     struct VarSubstitutor<'a> {
         var: &'a Variable,
         val: &'a RcTerm,
         bound_vars: Vec<Variable>,
     };
 
-    impl<'a> TermVisitor for VarSubstitutor<'a> {
-        type Result = Option<RcTerm>;
-
-        fn leave_lit(&mut self, _: &Literal) -> Self::Result {
-            None
-        }
-
-        fn leave_var(&mut self, v: &Variable) -> Self::Result {
+    impl<'a> TermFolder for VarSubstitutor<'a> {
+        fn fold_var(&mut self, v: &Variable) -> Option<RcTerm> {
             if self.bound_vars.iter().any(|x| x == self.var) || v != self.var {
                 None
             } else {
@@ -25,112 +18,95 @@ pub fn subs_var<VS: TermVisitorStrategy>(term: &RcTerm, var: &Variable, val: &Rc
             }
         }
 
-        fn enter_abs(&mut self, var: &Variable, _: &RcTerm) -> Option<Self::Result> {
-            self.bound_vars.push(var.clone());
-            None
-        }
-
-        fn leave_abs(&mut self,
-                     v: &Variable,
-                     _: &RcTerm,
-                     body_result: Self::Result)
-                     -> Self::Result {
+        fn fold_abs(&mut self, v: &Variable, b: &RcTerm) -> Option<RcTerm> {
+            self.bound_vars.push(v.clone());
+            let res = default_fold_abs(self, v, b);
             self.bound_vars.pop();
-            body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
-        }
-
-        fn leave_appl(&mut self,
-                      l: &RcTerm,
-                      r: &RcTerm,
-                      l_res: Self::Result,
-                      r_res: Self::Result)
-                      -> Self::Result {
-            if l_res.is_none() && r_res.is_none() {
-                None
-            } else {
-                Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
-                                   r_res.unwrap_or_else(|| r.clone())))
-            }
-        }
-
-        fn leave_builtin(&mut self,
-                         builtin: &BuiltinClosure,
-                         results: Vec<Self::Result>)
-                         -> Self::Result {
-            if results.iter().all(Option::is_none) {
-                None
-            } else {
-                let results = results.into_iter()
-                    .zip(builtin.args().iter())
-                    .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
-                    .collect();
-                Some(Term::builtin_rc(builtin.builtin_type(), results))
-            }
-        }
-        fn leave_if(&mut self,
-                    i: &RcTerm,
-                    t: &RcTerm,
-                    e: &RcTerm,
-                    i_res: Self::Result,
-                    t_e_result: Option<(Self::Result, Self::Result)>)
-                    -> Self::Result {
-            let (t_res, e_res) = t_e_result.unwrap();
-            if i_res.is_none() && t_res.is_none() && e_res.is_none() {
-                None
-            } else {
-                Some(Term::if_rc(i_res.unwrap_or_else(|| i.clone()),
-                                 t_res.unwrap_or_else(|| t.clone()),
-                                 e_res.unwrap_or_else(|| e.clone())))
-            }
+            res
         }
     }
 
-    let mut var_substitutor = VarSubstitutor {
+    let mut substitutor = VarSubstitutor {
         var: var,
         val: val,
         bound_vars: Vec::new(),
     };
-    term.visit::<VarSubstitutor, VS>(&mut var_substitutor).unwrap_or_else(|| term.clone())
+    term.fold(&mut substitutor).unwrap_or_else(|| term.clone())
 }
 
-pub trait BetaRecutionStrategy: TermVisitor + Default {}
-
-pub struct StrictBetaStep<VS> {
-    _field: PhantomData<VS>,
+struct BetaReductor<T> {
+    _field: T,
 }
 
-impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
-    type Result = Option<RcTerm>;
-    fn leave_lit(&mut self, _: &Literal) -> Self::Result {
+impl<T: BetaReductionStrategy> BetaReductor<T> {
+    pub fn new() -> BetaReductor<T> {
+        BetaReductor { _field: T::default() }
+    }
+}
+
+trait BetaReductionStrategy: Sized + Default {
+    fn fold_beta_appl(&mut BetaReductor<Self>, l: &RcTerm, r: &RcTerm) -> Option<RcTerm>;
+}
+
+impl<T: BetaReductionStrategy> TermFolder for BetaReductor<T> {
+    fn fold_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<RcTerm> {
+        T::fold_beta_appl(self, l, r)
+    }
+
+    fn fold_abs(&mut self, _: &Variable, _: &RcTerm) -> Option<RcTerm> {
         None
     }
-    fn leave_var(&mut self, _: &Variable) -> Self::Result {
-        None
+
+    fn fold_builtin(&mut self, builtin: &BuiltinClosure) -> Option<RcTerm> {
+        default_fold_builtin(self, builtin)
+            .and_then(|t| {
+                if let Term::Builtin(ref bi) = *t.as_ref() {
+                    bi.try_compute().or_else(|| Some(t.clone()))
+                } else {
+                    Some(t.clone())
+                }
+            })
+            .or_else(|| builtin.try_compute())
     }
 
-    fn enter_abs(&mut self, _: &Variable, _: &RcTerm) -> Option<Self::Result> {
-        Some(None)
+    fn fold_if(&mut self, i: &RcTerm, t: &RcTerm, e: &RcTerm) -> Option<RcTerm> {
+        let i_res = i.fold(self);
+        let i_is_none = i_res.is_none();
+        let i = i_res.as_ref().unwrap_or(i);
+        if let Term::Lit(Literal::Bool(b)) = *i.as_ref() {
+            let res = if b { t } else { e };
+            res.fold(self).or_else(|| Some(res.clone()))
+        } else if i_is_none {
+            None
+        } else {
+            Some(Term::if_rc(i.clone(), t.clone(), e.clone()))
+        }
     }
+}
 
-    fn leave_abs(&mut self, _: &Variable, _: &RcTerm, _: Self::Result) -> Self::Result {
-        None
+struct StrictBetaReductionStrategy {}
+
+impl Default for StrictBetaReductionStrategy {
+    fn default() -> StrictBetaReductionStrategy {
+        StrictBetaReductionStrategy {}
     }
+}
 
-    fn enter_if(&mut self, _: &RcTerm, _: &RcTerm, _: &RcTerm) -> IfBranchesPolicy {
-        IfBranchesPolicy::DontProcessBranches
-    }
-
-    fn leave_appl(&mut self,
-                  l: &RcTerm,
-                  r: &RcTerm,
-                  l_res: Self::Result,
-                  r_res: Self::Result)
-                  -> Self::Result {
+impl BetaReductionStrategy for StrictBetaReductionStrategy {
+    fn fold_beta_appl(_self: &mut BetaReductor<StrictBetaReductionStrategy>,
+                      l: &RcTerm,
+                      r: &RcTerm)
+                      -> Option<RcTerm> {
+        let l_res = l.fold(_self);
+        let r_res = r.fold(_self);
         let both_none = l_res.is_none() && r_res.is_none();
         let l = l_res.as_ref().unwrap_or(l);
         let r = r_res.as_ref().unwrap_or(r);
         match *l.as_ref() {
-            Term::Abs(ref v, ref b) => Some(subs_var::<VS>(b, v, r)),
+            Term::Abs(ref v, ref b) => {
+                let subs = subs_var(b, v, r);
+                subs.fold(_self).or_else(|| Some(subs))
+            }
             Term::Builtin(ref builtin) => builtin.apply_term(r),
             _ => {
                 if both_none {
@@ -141,180 +117,75 @@ impl<VS: TermVisitorStrategy> TermVisitor for StrictBetaStep<VS> {
             }
         }
     }
+}
 
-    fn leave_builtin(&mut self,
-                     builtin: &BuiltinClosure,
-                     results: Vec<Self::Result>)
-                     -> Self::Result {
-        if results.iter().all(Option::is_none) {
-            builtin.try_compute()
-        } else {
-            let results = results.into_iter()
-                .zip(builtin.args().iter())
-                .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
-                .collect();
-            let bi = BuiltinClosure::new(builtin.builtin_type(), results);
-            bi.try_compute().or_else(|| Some(Term::raw_builtin_rc(bi)))
-        }
+struct LazyBetaReductionStrategy {}
+
+impl Default for LazyBetaReductionStrategy {
+    fn default() -> LazyBetaReductionStrategy {
+        LazyBetaReductionStrategy {}
     }
+}
 
-    fn leave_if(&mut self,
-                i: &RcTerm,
-                t: &RcTerm,
-                e: &RcTerm,
-                i_res: Self::Result,
-                _: Option<(Self::Result, Self::Result)>)
-                -> Self::Result {
-        let i_is_none = i_res.is_none();
-        let i = i_res.as_ref().unwrap_or(i);
-        if let Term::Lit(Literal::Bool(b)) = *i.as_ref() {
-            Some(if b { t.clone() } else { e.clone() })
-        } else {
-            if i_is_none {
-                None
-            } else {
-                Some(Term::if_rc(i.clone(), t.clone(), e.clone()))
+impl BetaReductionStrategy for LazyBetaReductionStrategy {
+    fn fold_beta_appl(_self: &mut BetaReductor<LazyBetaReductionStrategy>,
+                      l: &RcTerm,
+                      r: &RcTerm)
+                      -> Option<RcTerm> {
+        let l_res = l.fold(_self);
+        let l_res_is_none = l_res.is_none();
+        let l = l_res.as_ref().unwrap_or(l);
+        match *l.as_ref() {
+            Term::Abs(ref v, ref b) => Some(subs_var(b, v, r)),
+            Term::Builtin(ref builtin) => builtin.apply_term(r),
+            _ => {
+                if l_res_is_none {
+                    None
+                } else {
+                    Some(Term::appl_rc(l.clone(), r.clone()))
+                }
             }
         }
     }
 }
 
-pub struct LazyBetaStep<VS> {
-    _field: PhantomData<VS>,
-}
-
-impl<VS: TermVisitorStrategy> TermVisitor for LazyBetaStep<VS> {
-    type Result = Option<RcTerm>;
-    fn leave_lit(&mut self, _: &Literal) -> Self::Result {
-        None
-    }
-    fn leave_var(&mut self, _: &Variable) -> Self::Result {
-        None
-    }
-    fn leave_abs(&mut self, v: &Variable, _: &RcTerm, body_result: Self::Result) -> Self::Result {
-        body_result.map(|new_body| Term::abs_rc(v.clone(), new_body))
-    }
-
-    fn enter_if(&mut self, _: &RcTerm, _: &RcTerm, _: &RcTerm) -> IfBranchesPolicy {
-        IfBranchesPolicy::DontProcessBranches
-    }
-
-    fn enter_appl(&mut self, l: &RcTerm, r: &RcTerm) -> Option<Self::Result> {
-        match **l {
-            Term::Abs(ref v, ref b) => Some(Some(subs_var::<VS>(b, v, r))),
-            Term::Builtin(ref builtin) => Some(builtin.apply_term(r)),
-            _ => None,
-        }
-    }
-
-    fn enter_builtin(&mut self, builtin: &BuiltinClosure) -> Option<Self::Result> {
-        builtin.try_compute().map(Some)
-    }
-
-    fn leave_appl(&mut self,
-                  l: &RcTerm,
-                  r: &RcTerm,
-                  l_res: Self::Result,
-                  r_res: Self::Result)
-                  -> Self::Result {
-        if l_res.is_none() && r_res.is_none() {
-            None
-        } else {
-            Some(Term::appl_rc(l_res.unwrap_or_else(|| l.clone()),
-                               r_res.unwrap_or_else(|| r.clone())))
-        }
-    }
-
-    fn leave_builtin(&mut self,
-                     builtin: &BuiltinClosure,
-                     results: Vec<Self::Result>)
-                     -> Self::Result {
-        if results.iter().all(Option::is_none) {
-            None
-        } else {
-            let results = results.into_iter()
-                .zip(builtin.args().iter())
-                .map(|(r, t)| r.unwrap_or_else(|| t.clone()))
-                .collect();
-            Some(Term::builtin_rc(builtin.builtin_type(), results))
-        }
-    }
-
-    fn leave_if(&mut self,
-                i: &RcTerm,
-                t: &RcTerm,
-                e: &RcTerm,
-                i_res: Self::Result,
-                _: Option<(Self::Result, Self::Result)>)
-                -> Self::Result {
-        let cond = i_res.unwrap_or_else(|| i.clone());
-        if let Term::Lit(Literal::Bool(b)) = *(cond.as_ref()) {
-            Some(if b { t.clone() } else { e.clone() })
-        } else {
-            None
-        }
-    }
-}
-
-impl<VS> Default for StrictBetaStep<VS> {
-    fn default() -> Self {
-        StrictBetaStep { _field: PhantomData }
-    }
-}
-
-impl<VS> Default for LazyBetaStep<VS> {
-    fn default() -> Self {
-        LazyBetaStep { _field: PhantomData }
-    }
-}
-
-impl<VS> BetaRecutionStrategy for StrictBetaStep<VS> where StrictBetaStep<VS>: TermVisitor {}
-impl<VS> BetaRecutionStrategy for LazyBetaStep<VS> where LazyBetaStep<VS>: TermVisitor {}
-
-pub fn beta_step<VS, BRS>(term: &RcTerm) -> Option<RcTerm>
-    where VS: TermVisitorStrategy,
-          BRS: BetaRecutionStrategy<Result = Option<RcTerm>>
+fn beta_step<BRS>(term: &RcTerm) -> Option<RcTerm>
+    where BRS: BetaReductionStrategy
 {
-    let mut beta_stepper = BRS::default();
-    term.visit::<BRS, VS>(&mut beta_stepper)
+    let mut beta_reductor = BetaReductor::<BRS>::new();
+    term.fold(&mut beta_reductor)
 }
 
-fn beta_reduction<VS, BRS>(term: &RcTerm) -> RcTerm
-    where VS: TermVisitorStrategy,
-          BRS: BetaRecutionStrategy<Result = Option<RcTerm>>
+fn beta_reduction<BRS>(term: &RcTerm) -> RcTerm
+    where BRS: BetaReductionStrategy
 {
     let mut result = term.clone();
-    while let Some(new_term) = beta_step::<VS, BRS>(&result) {
+    while let Some(new_term) = beta_step::<BRS>(&result) {
         result = new_term;
     }
     result
 }
 
-pub fn beta_reduction_strict<VS>(term: &RcTerm) -> RcTerm
-    where VS: TermVisitorStrategy
-{
-    beta_reduction::<VS, StrictBetaStep<VS>>(term)
+pub fn beta_reduction_strict(term: &RcTerm) -> RcTerm {
+    beta_reduction::<StrictBetaReductionStrategy>(term)
 }
 
-pub fn beta_reduction_lazy<VS>(term: &RcTerm) -> RcTerm
-    where VS: TermVisitorStrategy
-{
-    beta_reduction::<VS, LazyBetaStep<VS>>(term)
+pub fn beta_reduction_lazy(term: &RcTerm) -> RcTerm {
+    beta_reduction::<LazyBetaReductionStrategy>(term)
 }
 
 #[cfg(test)]
 mod test {
     use parse::parse_term;
     use terms::{Term, Variable};
-    use visitor::{IterativeVisitorStrategy, RecursiveVisitorStrategy};
-    use super::{StrictBetaStep, LazyBetaStep};
+    use super::{StrictBetaReductionStrategy, LazyBetaReductionStrategy};
     use test::Bencher;
 
     static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) \
                                       (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
-    static STRICT_FACTORIAL: &'static str =
-        "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) (\\f.\\n.(if (= n 1) then 1 else (* n \
-         (f (- n 1))))) 20";
+    static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
+                                             (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) \
+                                             20";
     static FAC_20: isize = 2_432_902_008_176_640_000;
 
     #[test]
@@ -330,10 +201,8 @@ mod test {
             let src_term = parse_term(term).expect(term);
             let val_term = parse_term(val).expect(val);
             let result_term = parse_term(res).expect(res);
-            let rec_subs_result =
-                super::subs_var::<RecursiveVisitorStrategy>(&src_term, &var, &val_term);
-            let iter_subs_result =
-                super::subs_var::<IterativeVisitorStrategy>(&src_term, &var, &val_term);
+            let rec_subs_result = super::subs_var(&src_term, &var, &val_term);
+            let iter_subs_result = super::subs_var(&src_term, &var, &val_term);
 
             assert_eq!(rec_subs_result, result_term);
             assert_eq!(iter_subs_result, result_term);
@@ -348,20 +217,10 @@ mod test {
             let from_term = parse_term(from).expect(from);
             let to_term = parse_term(to).expect(to);
 
-            assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
-                                          LazyBetaStep<RecursiveVisitorStrategy>>(&from_term)
+            assert_eq!(super::beta_step::<StrictBetaReductionStrategy>(&from_term)
                            .unwrap_or(from_term.clone()),
                        to_term);
-            assert_eq!(super::beta_step::<IterativeVisitorStrategy,
-                                          LazyBetaStep<IterativeVisitorStrategy>>(&from_term)
-                           .unwrap_or(from_term.clone()),
-                       to_term);
-            assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
-                                          StrictBetaStep<RecursiveVisitorStrategy>>(&from_term)
-                           .unwrap_or(from_term.clone()),
-                       to_term);
-            assert_eq!(super::beta_step::<IterativeVisitorStrategy,
-                                          StrictBetaStep<IterativeVisitorStrategy>>(&from_term)
+            assert_eq!(super::beta_step::<LazyBetaReductionStrategy>(&from_term)
                            .unwrap_or(from_term.clone()),
                        to_term);
         }
@@ -375,12 +234,7 @@ mod test {
             let from_term = parse_term(from).expect(from);
             let to_term = parse_term(to).expect(to);
 
-            assert_eq!(super::beta_step::<RecursiveVisitorStrategy,
-                                          LazyBetaStep<RecursiveVisitorStrategy>>(&from_term)
-                           .unwrap_or(from_term.clone()),
-                       to_term);
-            assert_eq!(super::beta_step::<IterativeVisitorStrategy,
-                                          LazyBetaStep<IterativeVisitorStrategy>>(&from_term)
+            assert_eq!(super::beta_step::<LazyBetaReductionStrategy>(&from_term)
                            .unwrap_or(from_term.clone()),
                        to_term);
         }
@@ -390,7 +244,6 @@ mod test {
     fn beta_recution() {
         let tests = vec![("a", "a"),
                          ("(\\x.x) z", "z"),
-                         ("(\\z. x ((\\y. z y) 1)) b", "x (b 1)"),
                          ("(\\f.\\x.f x) (\\n.0) 100", "0"),
                          ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
                          ("(\\x.? x a b) false", "b"),
@@ -400,65 +253,36 @@ mod test {
             let from_term = parse_term(from).expect(from);
             let to_term = parse_term(to).expect(to);
 
-            assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&from_term),
-                       to_term);
-            assert_eq!(super::beta_reduction_strict::<IterativeVisitorStrategy>(&from_term),
-                       to_term);
-            assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&from_term),
-                       to_term);
-            assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&from_term),
-                       to_term);
+            assert_eq!(super::beta_reduction_strict(&from_term), to_term);
+            assert_eq!(super::beta_reduction_lazy(&from_term), to_term);
         }
     }
 
     #[test]
     fn beta_recution_lazy() {
         let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10"),
+                         ("(\\z. x ((\\y. z y) 1)) b", "x ((\\y. b y) 1)"),
                          ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) false", "42")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).expect(from);
             let to_term = parse_term(to).expect(to);
 
-            assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&from_term),
-                       to_term);
-            assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&from_term),
-                       to_term);
+            assert_eq!(super::beta_reduction_lazy(&from_term), to_term);
         }
-    }
-
-    #[bench]
-    fn lazy_iter_reduction(b: &mut Bencher) {
-        let term = parse_term(FACTORIAL).expect(FACTORIAL);
-        b.iter(|| {
-            assert_eq!(super::beta_reduction_lazy::<IterativeVisitorStrategy>(&term),
-                       Term::num_lit_rc(FAC_20))
-        });
     }
 
     #[bench]
     fn lazy_rec_reduction(b: &mut Bencher) {
         let term = parse_term(FACTORIAL).expect(FACTORIAL);
-        b.iter(|| {
-            assert_eq!(super::beta_reduction_lazy::<RecursiveVisitorStrategy>(&term),
-                       Term::num_lit_rc(FAC_20))
-        });
-    }
-
-    #[bench]
-    fn strict_iter_reduction(b: &mut Bencher) {
-        let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
-        b.iter(|| {
-            assert_eq!(super::beta_reduction_strict::<IterativeVisitorStrategy>(&term),
-                       Term::num_lit_rc(FAC_20))
-        });
+        b.iter(|| assert_eq!(super::beta_reduction_lazy(&term), Term::num_lit_rc(FAC_20)));
     }
 
     #[bench]
     fn strict_rec_reduction(b: &mut Bencher) {
         let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
         b.iter(|| {
-            assert_eq!(super::beta_reduction_strict::<RecursiveVisitorStrategy>(&term),
+            assert_eq!(super::beta_reduction_strict(&term),
                        Term::num_lit_rc(FAC_20))
         });
     }

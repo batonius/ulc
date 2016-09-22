@@ -1,14 +1,13 @@
 #![feature(slice_patterns, test)]
 
-#[cfg(feature="with-combine")]
-extern crate combine;
 extern crate test;
 
 mod terms;
 mod builtin;
 mod parse;
-mod visitor;
+mod folder;
 mod reduct;
+
 fn main() {
     let mut input = String::new();
     loop {
@@ -20,7 +19,7 @@ fn main() {
         }
         let term = parse::parse_term(&input).expect("Parsing error");
         println!("{:#}", term);
-        // println!("{:#}",
-        //          reduct::beta_reduction_strict::<visitor::IterativeVisitorStrategy>(&term));
+        println!("{:#}", reduct::beta_reduction_strict(&term));
+        println!("{:#}", reduct::beta_reduction_lazy(&term));
     }
 }

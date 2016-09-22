@@ -4,16 +4,12 @@ version = "0.1.0"
 authors = ["baton <batonius.kirov@gmail.com>"]
 build = "build.rs"
 
-[features]
-default = ["lalrpop-util", "lalrpop"]
-with-combine = ["combine"]
 
 [dependencies]
-combine = {version="*", optional=true}
-lalrpop-util = { git = "https://github.com/nikomatsakis/lalrpop", optional=true }
+lalrpop-util = { git = "https://github.com/nikomatsakis/lalrpop"}
 
 [build-dependencies]
-lalrpop = { git = "https://github.com/nikomatsakis/lalrpop", optional=true }
+lalrpop = { git = "https://github.com/nikomatsakis/lalrpop"}
 
 [profile.release]
 debug = true

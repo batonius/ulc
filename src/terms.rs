@@ -21,7 +21,7 @@ impl fmt::Display for Variable {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Num(isize),
     Bool(bool),
@@ -46,6 +46,8 @@ pub enum Term {
     If(RcTerm, RcTerm, RcTerm),
 }
 
+pub type RcTerm = Rc<Term>;
+
 impl Term {
     pub fn var_rc(var: Variable) -> RcTerm {
         Rc::new(Term::Var(var))
@@ -66,21 +68,14 @@ impl Term {
     pub fn bool_lit_rc(val: bool) -> RcTerm {
         Rc::new(Term::Lit(Literal::Bool(val)))
     }
-
     pub fn builtin_rc(builtin_type: BuiltinType, args: Vec<RcTerm>) -> RcTerm {
         Rc::new(Term::Builtin(BuiltinClosure::new(builtin_type, args)))
-    }
-
-    pub fn raw_builtin_rc(builtin: BuiltinClosure) -> RcTerm {
-        Rc::new(Term::Builtin(builtin))
     }
 
     pub fn if_rc(i: RcTerm, t: RcTerm, e: RcTerm) -> RcTerm {
         Rc::new(Term::If(i, t, e))
     }
 }
-
-pub type RcTerm = Rc<Term>;
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -1,24 +1,14 @@
 use terms::RcTerm;
 
-#[cfg(feature="default")]
 pub mod term_parser;
-#[cfg(feature="default")]
 mod lalrpop;
-#[cfg(feature="with-combine")]
-mod combine;
 
 pub trait TermParser {
     fn parse(s: &str) -> Option<RcTerm>;
 }
 
-#[cfg(feature="default")]
 pub fn parse_term(s: &str) -> Option<RcTerm> {
     lalrpop::LalrpopParser::parse(s)
-}
-
-#[cfg(feature="with-combine")]
-pub fn parse_term(s: &str) -> Option<RcTerm> {
-    combine::CombineParser::parse(s)
 }
 
 #[cfg(test)]

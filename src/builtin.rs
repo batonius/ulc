@@ -5,7 +5,6 @@ use std::fmt;
 pub enum BuiltinType {
     Add,
     Sub,
-    If,
     Mul,
     Div,
     Eq,
@@ -16,7 +15,6 @@ impl fmt::Display for BuiltinType {
         match *self {
             BuiltinType::Add => write!(f, "+"),
             BuiltinType::Sub => write!(f, "-"),
-            BuiltinType::If => write!(f, "?"),
             BuiltinType::Mul => write!(f, "*"),
             BuiltinType::Div => write!(f, "/"),
             BuiltinType::Eq => write!(f, "=")
@@ -32,7 +30,6 @@ impl BuiltinType {
             BuiltinType::Mul |
             BuiltinType::Div |
             BuiltinType::Eq => 2,
-            BuiltinType::If => 3,
         }
     }
 }
@@ -90,7 +87,6 @@ impl BuiltinClosure {
             BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a*b),
             BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a/b),
             BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a==b),
-            BuiltinType::If => BuiltinClosure::try_compute_if(&self.args),
         }
     }
 
@@ -111,15 +107,6 @@ impl BuiltinClosure {
             if let (&Term::Lit(Literal::Num(ref x)),
                     &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
                 return Some(Term::bool_lit_rc(f(*x, *y)));
-            }
-        }
-        None
-    }
-
-    fn try_compute_if(args: &[RcTerm]) -> Option<RcTerm> {
-        if let [ref a, ref b, ref c] = *args {
-            if let Term::Lit(Literal::Bool(ref t)) = *a.as_ref() {
-                return Some(if *t { b.clone() } else { c.clone() });
             }
         }
         None

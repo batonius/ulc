@@ -1,6 +1,7 @@
 use terms::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
 use std::str::FromStr;
+use types::{TermType, RcTermType};
 
 grammar;
 
@@ -33,11 +34,16 @@ Builtin: BuiltinType = {
     "*" => BuiltinType::Mul,
     "/" => BuiltinType::Div,
     "=" => BuiltinType::Eq,
-    "?" => BuiltinType::If
 };
 
 Var: Variable = {
-   r"[a-zA-Z][a-zA-Z0-9]*" => Variable::new(<>)
+    <n:r"[a-z][a-zA-Z0-9]*"> <t:( ":" <Type>)?> => {
+        if let Some(t) = t {
+            Variable::with_type(n, t)
+        } else {
+            Variable::new(n)
+        }
+    }
 };
 
 Abs: RcTerm = {
@@ -51,4 +57,16 @@ Appl: RcTerm = {
 
 If: RcTerm = {
     "if" <Term> "then" <Term> "else" <Term> => Term::if_rc(<>)
+};
+
+SimpleType: RcTermType = {
+    "(" <Type> ")",
+    "Int" => TermType::new_int(),
+    "Bool" => TermType::new_bool(),
+    r"[A-Z][a-zA-Z0-9]*" => TermType::new_var(<>)
+};
+
+pub Type: RcTermType = {
+    <SimpleType> "->" <Type> => TermType::new_arrow(<>),
+    <SimpleType>
 };

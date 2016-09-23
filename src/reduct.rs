@@ -182,7 +182,7 @@ mod test {
     use test::Bencher;
 
     static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) \
-                                      (\\f.\\n.(? (= n 1) 1 (* n (f (- n 1))))) 20";
+                                      (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) 20";
     static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
                                              (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) \
                                              20";
@@ -246,7 +246,7 @@ mod test {
                          ("(\\x.x) z", "z"),
                          ("(\\f.\\x.f x) (\\n.0) 100", "0"),
                          ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
-                         ("(\\x.? x a b) false", "b"),
+                         ("(\\x.if x then a else b) false", "b"),
                          ("(\\x.if x then 1 else ((\\x.x x)(\\x.x x))) true", "1")];
 
         for (from, to) in tests {
@@ -262,7 +262,7 @@ mod test {
     fn beta_recution_lazy() {
         let tests = vec![("(\\a.\\b.b) ((\\x.x x)(\\x.x x)) 10", "10"),
                          ("(\\z. x ((\\y. z y) 1)) b", "x ((\\y. b y) 1)"),
-                         ("(\\x.? x ((\\x.x x)(\\x.x x)) 42) false", "42")];
+                         ("(\\x.if x then ((\\x.x x)(\\x.x x)) else 42) false", "42")];
 
         for (from, to) in tests {
             let from_term = parse_term(from).expect(from);

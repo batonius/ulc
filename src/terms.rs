@@ -1,23 +1,51 @@
 use std::fmt;
 use std::rc::Rc;
 use builtin::{BuiltinType, BuiltinClosure};
+use types::{TermType, RcTermType};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     var_name: String,
+    var_type: RcTermType,
+}
+
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.var_name == other.var_name
+    }
 }
 
 impl Variable {
     pub fn new<S>(name: S) -> Variable
         where S: Into<String>
     {
-        Variable { var_name: name.into() }
+        Variable {
+            var_name: name.into(),
+            var_type: TermType::new_none(),
+        }
+    }
+
+    pub fn with_type<S>(name: S, ty: RcTermType) -> Variable
+        where S: Into<String>
+    {
+        Variable {
+            var_name: name.into(),
+            var_type: ty,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.var_name
+    }
+
+    pub fn var_type(&self) -> &RcTermType {
+        &self.var_type
     }
 }
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.var_name)
+        write!(f, "{}:{:#}", self.var_name, self.var_type.as_ref())
     }
 }
 

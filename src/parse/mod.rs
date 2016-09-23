@@ -1,14 +1,33 @@
-use terms::RcTerm;
-
 pub mod term_parser;
-mod lalrpop;
+
+use terms::RcTerm;
+use types::RcTermType;
+use self::term_parser::{parse_Type, parse_Term};
 
 pub trait TermParser {
     fn parse(s: &str) -> Option<RcTerm>;
 }
 
+pub struct LalrpopParser;
+
+impl TermParser for LalrpopParser {
+    fn parse(s: &str) -> Option<RcTerm> {
+        match parse_Term(s) {
+            Ok(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 pub fn parse_term(s: &str) -> Option<RcTerm> {
-    lalrpop::LalrpopParser::parse(s)
+    LalrpopParser::parse(s)
+}
+
+pub fn parse_type(s: &str) -> Option<RcTermType> {
+    match parse_Type(s) {
+        Ok(e) => Some(e),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

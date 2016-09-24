@@ -102,12 +102,13 @@ impl BetaReductionStrategy for StrictBetaReductionStrategy {
         let both_none = l_res.is_none() && r_res.is_none();
         let l = l_res.as_ref().unwrap_or(l);
         let r = r_res.as_ref().unwrap_or(r);
-        match *l.as_ref() {
-            Term::Abs(ref v, ref b) => {
+        match (l.as_ref(), r.as_ref()) {
+            (&Term::Abs(ref v, ref b), _) => {
                 let subs = subs_var(b, v, r);
                 subs.fold(_self).or_else(|| Some(subs))
             }
-            Term::Builtin(ref builtin) => builtin.apply_term(r),
+            (&Term::Builtin(ref builtin), _) => builtin.apply_term(r),
+            (&Term::TypeAbs(_, ref b), &Term::Type(..)) => Some(b.clone()),
             _ => {
                 if both_none {
                     None
@@ -135,9 +136,10 @@ impl BetaReductionStrategy for LazyBetaReductionStrategy {
         let l_res = l.fold(_self);
         let l_res_is_none = l_res.is_none();
         let l = l_res.as_ref().unwrap_or(l);
-        match *l.as_ref() {
-            Term::Abs(ref v, ref b) => Some(subs_var(b, v, r)),
-            Term::Builtin(ref builtin) => builtin.apply_term(r),
+        match (l.as_ref(), r.as_ref()) {
+            (&Term::Abs(ref v, ref b), _) => Some(subs_var(b, v, r)),
+            (&Term::Builtin(ref builtin), _) => builtin.apply_term(r),
+            (&Term::TypeAbs(_, ref b), &Term::Type(..)) => Some(b.clone()),
             _ => {
                 if l_res_is_none {
                     None
@@ -246,6 +248,7 @@ mod test {
                          ("(\\x.x) z", "z"),
                          ("(\\f.\\x.f x) (\\n.0) 100", "0"),
                          ("(\\f.\\a. f (f a)) (\\x.+ x 10) 0", "20"),
+                         (r#"(\f:/\t.t->t.f [Int] 10) (/\t.\x:t.x)"#, "10"),
                          ("(\\x.if x then a else b) false", "b"),
                          ("(\\x.if x then 1 else ((\\x.x x)(\\x.x x))) true", "1")];
 

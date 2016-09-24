@@ -1,12 +1,13 @@
 use terms::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
 use std::str::FromStr;
-use types::{TermType, RcTermType};
+use types::{TermType, RcTermType, TypeVariable};
 
 grammar;
 
 pub Term: RcTerm = {
     <Abs>,
+    <TypeAbs>,
     <If>,
     <Appl>,
 };
@@ -17,6 +18,7 @@ SimpleTerm: RcTerm = {
     Bool => Term::bool_lit_rc(<>),
     Builtin => Term::builtin_rc(<>, vec![]),
     Var => Term::var_rc(<>),
+    "[" <Type> "]" => Term::type_rc(<>)
 };
 
 Num: isize = {
@@ -59,14 +61,36 @@ If: RcTerm = {
     "if" <Term> "then" <Term> "else" <Term> => Term::if_rc(<>)
 };
 
+TypeAbs: RcTerm = {
+    r"/\\" <TypeVar> "." <Term> => Term::type_abs_rc(<>)
+};
+
+PiType: RcTermType = {
+    r"/\\" <TypeVar> "." <Type> => TermType::new_pi(<>)
+};
+
+TypeVar: TypeVariable = {
+    r"[a-z][a-zA-Z0-9]*" => TypeVariable::new(<>)
+};
+
+NamedType: RcTermType = {
+    r"[A-Z][a-zA-Z0-9]*" => TermType::new_named(<>)
+};
+
 SimpleType: RcTermType = {
     "(" <Type> ")",
     "Int" => TermType::new_int(),
     "Bool" => TermType::new_bool(),
-    r"[A-Z][a-zA-Z0-9]*" => TermType::new_var(<>)
+    TypeVar => TermType::new_var(<>),
+    <NamedType>,
+};
+
+ArrowType: RcTermType = {
+    <SimpleType> "->" <Type> => TermType::new_arrow(<>),
+    <SimpleType>
 };
 
 pub Type: RcTermType = {
-    <SimpleType> "->" <Type> => TermType::new_arrow(<>),
-    <SimpleType>
+    <PiType>,
+    <ArrowType>
 };

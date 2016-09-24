@@ -1,7 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use builtin::{BuiltinType, BuiltinClosure};
-use types::{TermType, RcTermType};
+use types::{TermType, RcTermType, TypeVariable};
 
 #[derive(Debug, Clone)]
 pub struct Variable {
@@ -72,6 +72,8 @@ pub enum Term {
     Lit(Literal),
     Builtin(BuiltinClosure),
     If(RcTerm, RcTerm, RcTerm),
+    Type(RcTermType),
+    TypeAbs(TypeVariable, RcTerm),
 }
 
 pub type RcTerm = Rc<Term>;
@@ -103,6 +105,14 @@ impl Term {
     pub fn if_rc(i: RcTerm, t: RcTerm, e: RcTerm) -> RcTerm {
         Rc::new(Term::If(i, t, e))
     }
+
+    pub fn type_rc(ty: RcTermType) -> RcTerm {
+        Rc::new(Term::Type(ty))
+    }
+
+    pub fn type_abs_rc(ty_var: TypeVariable, body: RcTerm) -> RcTerm {
+        Rc::new(Term::TypeAbs(ty_var, body))
+    }
 }
 
 impl fmt::Display for Term {
@@ -114,6 +124,8 @@ impl fmt::Display for Term {
             Term::Lit(ref lit) => lit.fmt(f),
             Term::Builtin(ref builtin) => builtin.fmt(f),
             Term::If(ref i, ref t, ref e) => write!(f, "if {:#} then {:#} else {:#}", i, t, e),
+            Term::Type(ref ty) => write!(f, "[{:#}]", ty),
+            Term::TypeAbs(ref ty_var, ref body) => write!(f, "/\\{:#}.{:#}", ty_var, body),
         }
     }
 }

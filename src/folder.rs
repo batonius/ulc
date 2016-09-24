@@ -1,4 +1,5 @@
 use terms::{Term, RcTerm, Variable, Literal};
+use types::{RcTermType, TypeVariable};
 use builtin::BuiltinClosure;
 
 pub trait TermFolder: Sized {
@@ -25,6 +26,14 @@ pub trait TermFolder: Sized {
     fn fold_lit(&mut self, l: &Literal) -> Option<RcTerm> {
         default_fold_lit(self, l)
     }
+
+    fn fold_type(&mut self, ty: &RcTermType) -> Option<RcTerm> {
+        default_fold_type(self, ty)
+    }
+
+    fn fold_type_abs(&mut self, tv: &TypeVariable, b: &RcTerm) -> Option<RcTerm> {
+        default_fold_type_abs(self, tv, b)
+    }
 }
 
 pub fn fold<F: TermFolder>(f: &mut F, t: &Term) -> Option<RcTerm> {
@@ -35,6 +44,8 @@ pub fn fold<F: TermFolder>(f: &mut F, t: &Term) -> Option<RcTerm> {
         Term::Lit(ref l) => f.fold_lit(l),
         Term::Builtin(ref bc) => f.fold_builtin(bc),
         Term::If(ref i, ref t, ref e) => f.fold_if(i, t, e),
+        Term::Type(ref ty) => f.fold_type(ty),
+        Term::TypeAbs(ref tv, ref body) => f.fold_type_abs(tv, body),
     }
 }
 
@@ -95,4 +106,13 @@ pub fn default_fold_if<F: TermFolder>(f: &mut F,
 
 pub fn default_fold_lit<F: TermFolder>(_: &mut F, _: &Literal) -> Option<RcTerm> {
     None
+}
+
+fn default_fold_type<F: TermFolder>(_: &mut F, _: &RcTermType) -> Option<RcTerm> {
+    None
+}
+
+fn default_fold_type_abs<F: TermFolder>(f: &mut F, v: &TypeVariable, b: &RcTerm) -> Option<RcTerm> {
+    let res = fold(f, b);
+    res.map(|t| Term::type_abs_rc(v.clone(), t))
 }

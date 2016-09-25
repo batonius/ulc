@@ -22,7 +22,8 @@ fn main() {
         let term = parse::parse_term(&input).expect("Parsing error");
         println!("{:#}", term);
         println!("{:#}",
-                 type_checker::check_term_type(&term).unwrap_or(types::TermType::new_none()));
+                 type_checker::check_term_type(&term)
+                     .unwrap_or(types::TermType::new_named("Fail!")));
         println!("{:#}", reduct::beta_reduction_strict(&term));
         // println!("{:#}", reduct::beta_reduction_lazy(&term));
     }

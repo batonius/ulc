@@ -1,4 +1,4 @@
-use types::{TermType, RcTermType, TypeVariable};
+use types::{TermType, RcTermType, TypeVariable, Sort};
 use terms::{Term, Literal, Variable};
 use builtin::BuiltinType;
 
@@ -7,8 +7,7 @@ pub fn subst_type(ty: &RcTermType, ty_var: &TypeVariable, res: &RcTermType) -> R
             TermType::Int |
             TermType::Bool |
             TermType::Named(..) |
-            TermType::Kind |
-            TermType::None => None,
+            TermType::Type => None,
             TermType::Var(ref v) => {
                 if ty_var.name() == v.name() {
                     Some(res.clone())
@@ -31,6 +30,14 @@ pub fn subst_type(ty: &RcTermType, ty_var: &TypeVariable, res: &RcTermType) -> R
         .unwrap_or_else(|| ty.clone())
 }
 
+fn get_vars_type(var: &Variable) -> Option<RcTermType> {
+    match *var.sort() {
+        Sort::None => None,
+        Sort::Kind(..) => Some(TermType::new_type()),
+        Sort::Type(ref ty) => Some(ty.clone())
+    }
+}
+
 pub fn check_term_type(term: &Term) -> Option<RcTermType> {
     let mut var_bindings = Vec::new();
 
@@ -39,14 +46,14 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
             Term::Var(ref v) => {
                 match var_bindings.iter().rev().find(|u| u.name() == v.name()) {
                     Some(u) => {
-                        if u.var_type() == v.var_type() ||
-                           *v.var_type().as_ref() == TermType::None {
-                            return Some(u.var_type().clone());
+                        if u.sort() == v.sort() ||
+                           *v.sort() == Sort::None {
+                            return get_vars_type(u);
                         }
                     }
                     None => {
-                        if *v.var_type().as_ref() != TermType::None {
-                            return Some(v.var_type().clone());
+                        if *v.sort() != Sort::None {
+                            return get_vars_type(v);
                         }
                     }
                 }
@@ -56,7 +63,18 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                 var_bindings.push(v.clone());
                 let body_type = check_type_rec(b, var_bindings);
                 var_bindings.pop();
-                body_type.map(|t| TermType::new_arrow(v.var_type().clone(), t))
+                match *v.sort() {
+                    Sort::None => None,
+                    Sort::Kind(..) => {
+                        match (TypeVariable::from_var(v), body_type) {
+                            (Some(tv), Some(t)) => Some(TermType::new_pi(tv, t)),
+                            _ => None
+                        }
+                    }
+                    Sort::Type(ref ty) => {
+                        body_type.map(|t| TermType::new_arrow(ty.clone(), t))
+                    }
+                }
             }
             Term::Appl(ref l_term, ref r_term) => {
                 let left_type = check_type_rec(l_term, var_bindings);
@@ -144,10 +162,7 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                     }
                 }
             }
-            Term::Type(..) => Some(TermType::new_kind()),
-            Term::TypeAbs(ref ty_var, ref b) => {
-                check_type_rec(b, var_bindings).map(|t| TermType::new_pi(ty_var.clone(), t))
-            }
+            Term::Type(..) => Some(TermType::new_type()),
         }
     }
 
@@ -168,11 +183,14 @@ mod test {
                          ("\\x:A.x", "A->A"),
                          ("\\x:A->B.\\y:A.x y", "(A->B)->A->B"),
                          ("(\\f:Int->Int.\\x:Int.f (f x)) (* 30) 0", "Int"),
-                         (r"(/\a.\f:a.f)", r"/\a.a->a"),
-                         (r"(/\a.\f:a.f) [A]", r"A->A"),
-                         (r"(/\a.\f:a.f) [A] x:A", r"A"),
-                         (r"(/\a.\f:a->a.\x:a.f (f x))", r"/\a.(a->a)->a->a"),
-                         (r"(/\a.\f:/\b.b->b.\x:a.f [a] x) [Int] (/\b.\x:b.x) 10", r"Int"),
+                         (r"(\a:*.\f:a.f)", r"\a:*.a->a"),
+                         (r"(\a:*.\f:a.f) [A]", r"A->A"),
+                         (r"(\a:*.\f:a.f) [A] x:A", r"A"),
+                         (r"(\a:*.\f:a->a.\x:a.f (f x))", r"\a:*.(a->a)->a->a"),
+                         (r"let inc:Int->Int=\x:Int.(+ x 1) in 
+let dup:\t:*.(t->t)->t->t=\t:*.\f:t->t.\x:t.f (f x) in dup [Int] inc 10",
+                          r"Int"),
+                         (r"(\a:*.\f:\b:*.b->b.\x:a.f [a] x) [Int] (\b:*.\x:b.x) 10", r"Int"),
                          ("\\x:Int.\\y:A.\\z:A. if (= x 0) then z else y", "Int->A->A->A")];
         for (term, term_type) in tests.into_iter() {
             let src_term = parse_term(term).expect(term);

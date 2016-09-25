@@ -1,12 +1,12 @@
 use std::fmt;
 use std::rc::Rc;
 use builtin::{BuiltinType, BuiltinClosure};
-use types::{TermType, RcTermType, TypeVariable};
+use types::{RcTermType, Sort, RcSort};
 
 #[derive(Debug, Clone)]
 pub struct Variable {
     var_name: String,
-    var_type: RcTermType,
+    var_sort: RcSort,
 }
 
 impl PartialEq for Variable {
@@ -21,16 +21,16 @@ impl Variable {
     {
         Variable {
             var_name: name.into(),
-            var_type: TermType::new_none(),
+            var_sort: Sort::new_none(),
         }
     }
 
-    pub fn with_type<S>(name: S, ty: RcTermType) -> Variable
+    pub fn with_sort<S>(name: S, sort: RcSort) -> Variable
         where S: Into<String>
     {
         Variable {
             var_name: name.into(),
-            var_type: ty,
+            var_sort: sort,
         }
     }
 
@@ -38,14 +38,14 @@ impl Variable {
         &self.var_name
     }
 
-    pub fn var_type(&self) -> &RcTermType {
-        &self.var_type
+    pub fn sort(&self) -> &Sort {
+        &self.var_sort
     }
 }
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{:#}", self.var_name, self.var_type.as_ref())
+        write!(f, "{}:{:#}", self.var_name, self.sort())
     }
 }
 
@@ -73,7 +73,6 @@ pub enum Term {
     Builtin(BuiltinClosure),
     If(RcTerm, RcTerm, RcTerm),
     Type(RcTermType),
-    TypeAbs(TypeVariable, RcTerm),
 }
 
 pub type RcTerm = Rc<Term>;
@@ -98,6 +97,7 @@ impl Term {
     pub fn bool_lit_rc(val: bool) -> RcTerm {
         Rc::new(Term::Lit(Literal::Bool(val)))
     }
+
     pub fn builtin_rc(builtin_type: BuiltinType, args: Vec<RcTerm>) -> RcTerm {
         Rc::new(Term::Builtin(BuiltinClosure::new(builtin_type, args)))
     }
@@ -108,10 +108,6 @@ impl Term {
 
     pub fn type_rc(ty: RcTermType) -> RcTerm {
         Rc::new(Term::Type(ty))
-    }
-
-    pub fn type_abs_rc(ty_var: TypeVariable, body: RcTerm) -> RcTerm {
-        Rc::new(Term::TypeAbs(ty_var, body))
     }
 }
 
@@ -125,7 +121,6 @@ impl fmt::Display for Term {
             Term::Builtin(ref builtin) => builtin.fmt(f),
             Term::If(ref i, ref t, ref e) => write!(f, "if {:#} then {:#} else {:#}", i, t, e),
             Term::Type(ref ty) => write!(f, "[{:#}]", ty),
-            Term::TypeAbs(ref ty_var, ref body) => write!(f, "/\\{:#}.{:#}", ty_var, body),
         }
     }
 }

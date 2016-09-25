@@ -1,15 +1,15 @@
 use terms::{Term, Variable, RcTerm};
 use builtin::BuiltinType;
 use std::str::FromStr;
-use types::{TermType, RcTermType, TypeVariable};
+use types::{TermType, RcTermType, TypeVariable, Kind, RcKind, Sort, RcSort};
 
 grammar;
 
 pub Term: RcTerm = {
     <Abs>,
-    <TypeAbs>,
     <If>,
     <Appl>,
+    "let" <v:Var> "=" <t:Term> "in" <b:Term> => Term::appl_rc(Term::abs_rc(v, b), t)
 };
 
 SimpleTerm: RcTerm = {
@@ -39,9 +39,9 @@ Builtin: BuiltinType = {
 };
 
 Var: Variable = {
-    <n:r"[a-z][a-zA-Z0-9]*"> <t:( ":" <Type>)?> => {
-        if let Some(t) = t {
-            Variable::with_type(n, t)
+    <n:r"[a-z][a-zA-Z0-9]*"> <s:( ":" <Sort>)?> => {
+        if let Some(s) = s {
+            Variable::with_sort(n, s)
         } else {
             Variable::new(n)
         }
@@ -49,7 +49,7 @@ Var: Variable = {
 };
 
 Abs: RcTerm = {
-    r"\\" <v:Var> "." <t:Term> => Term::abs_rc(v, t)
+    r"\\" <v:Var> "." <t:Term> => Term::abs_rc(v, t),
 };
 
 Appl: RcTerm = {
@@ -61,16 +61,18 @@ If: RcTerm = {
     "if" <Term> "then" <Term> "else" <Term> => Term::if_rc(<>)
 };
 
-TypeAbs: RcTerm = {
-    r"/\\" <TypeVar> "." <Term> => Term::type_abs_rc(<>)
-};
-
 PiType: RcTermType = {
-    r"/\\" <TypeVar> "." <Type> => TermType::new_pi(<>)
+    r"\\" <TypeVar> "." <Type> => TermType::new_pi(<>)
 };
 
 TypeVar: TypeVariable = {
-    r"[a-z][a-zA-Z0-9]*" => TypeVariable::new(<>)
+    <n:r"[a-z][a-zA-Z0-9]*"> <k:( ":" <Kind>)?> => {
+        if let Some(k) = k {
+            TypeVariable::new(n, k)
+        } else {
+            TypeVariable::new(n, Kind::new_star())
+        }
+    }
 };
 
 NamedType: RcTermType = {
@@ -93,4 +95,18 @@ ArrowType: RcTermType = {
 pub Type: RcTermType = {
     <PiType>,
     <ArrowType>
+};
+
+StarKind: RcKind = {
+    "*" => Kind::new_star()
+};
+
+Kind: RcKind = {
+    <StarKind> "=>" <Kind> => Kind::new_arrow(<>),
+    <StarKind>
+};
+
+Sort: RcSort = {
+    <Kind> => Sort::new_kind(<>),
+    <Type> => Sort::new_type(<>)
 };

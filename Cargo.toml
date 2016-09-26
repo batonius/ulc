@@ -12,4 +12,4 @@ lalrpop-util = { git = "https://github.com/nikomatsakis/lalrpop"}
 lalrpop = { git = "https://github.com/nikomatsakis/lalrpop"}
 
 [profile.release]
-debug = true
+lto=true

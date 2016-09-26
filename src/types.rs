@@ -65,11 +65,11 @@ impl fmt::Display for Kind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeVariable {
     var_name: String,
-    var_kind: RcKind,
+    var_kind: Option<RcKind>,
 }
 
 impl TypeVariable {
-    pub fn new<S>(name: S, kind: RcKind) -> TypeVariable
+    pub fn new<S>(name: S, kind: Option<RcKind>) -> TypeVariable
         where S: Into<String>
     {
         TypeVariable {
@@ -80,7 +80,7 @@ impl TypeVariable {
 
     pub fn from_var(var: &Variable) -> Option<TypeVariable> {
         match *var.sort() {
-            Sort::Kind(ref kind) => Some(Self::new(var.name(), kind.clone())),
+            Sort::Kind(ref kind) => Some(Self::new(var.name(), Some(kind.clone()))),
             _ => None,
         }
     }
@@ -89,14 +89,17 @@ impl TypeVariable {
         &self.var_name
     }
 
-    pub fn kind(&self) -> &Kind {
-        self.var_kind.as_ref()
+    pub fn kind(&self) -> &Option<RcKind> {
+        &self.var_kind
     }
 }
 
 impl fmt::Display for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.var_name)
+        match self.var_kind {
+            None => write!(f, "{}", self.var_name),
+            Some(ref k) => write!(f, "{}:{:#}", self.var_name, &k),
+        }
     }
 }
 
@@ -111,6 +114,7 @@ pub enum TermType {
     Named(String),
     Arrow(RcTermType, RcTermType),
     Pi(TypeVariable, RcTermType),
+    Appl(RcTermType, RcTermType),
 }
 
 impl fmt::Display for TermType {
@@ -124,6 +128,7 @@ impl fmt::Display for TermType {
             TermType::Arrow(ref from, ref to) => {
                 write!(f, "({:#} -> {:#})", from.as_ref(), to.as_ref())
             }
+            TermType::Appl(ref l, ref r) => write!(f, "{{{:#} {:#}}}", l.as_ref(), r.as_ref()),
             TermType::Pi(ref ty_var, ref ty) => write!(f, "\\{:#}.{:#}", ty_var, ty),
         }
     }
@@ -156,5 +161,9 @@ impl TermType {
 
     pub fn new_type() -> RcTermType {
         Rc::new(TermType::Type)
+    }
+
+    pub fn new_appl(l: RcTermType, r: RcTermType) -> RcTermType {
+        Rc::new(TermType::Appl(l, r))
     }
 }

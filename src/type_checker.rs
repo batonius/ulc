@@ -1,4 +1,4 @@
-use types::{TermType, RcTermType, TypeVariable, Sort};
+use types::{TermType, RcTermType, TypeVariable, Sort, Kind, RcKind};
 use terms::{Term, Literal, Variable};
 use builtin::BuiltinType;
 
@@ -26,6 +26,9 @@ pub fn subst_type(ty: &RcTermType, ty_var: &TypeVariable, res: &RcTermType) -> R
                     Some(TermType::new_pi(v.clone(), subst_type(ty, ty_var, res)))
                 }
             }
+            TermType::Appl(ref l, ref r) => {
+                Some(TermType::new_appl(subst_type(l, ty_var, res), subst_type(r, ty_var, res)))
+            }
         }
         .unwrap_or_else(|| ty.clone())
 }
@@ -34,8 +37,95 @@ fn get_vars_type(var: &Variable) -> Option<RcTermType> {
     match *var.sort() {
         Sort::None => None,
         Sort::Kind(..) => Some(TermType::new_type()),
-        Sort::Type(ref ty) => Some(ty.clone())
+        Sort::Type(ref ty) => Some(ty.clone()),
     }
+}
+
+fn get_type_kind(ty: &TermType) -> Option<RcKind> {
+    fn get_type_kind_rec(ty: &TermType, bound_vars: &mut Vec<TypeVariable>) -> Option<RcKind> {
+        match *ty {
+            TermType::Int |
+            TermType::Bool |
+            TermType::Named(..) |
+            TermType::Arrow(..) |
+            TermType::Type => Some(Kind::new_star()),
+            TermType::Var(ref tv) => {
+                if let Some(ref k) = *tv.kind() {
+                    Some(k.clone())
+                } else {
+                    match bound_vars.iter().rev().find(|u| u.name() == tv.name()) {
+                        None => tv.kind().clone(),
+                        Some(v) => v.kind().clone(),
+                    }
+                }
+            }
+            TermType::Pi(ref tv, ref body) => {
+                tv.kind().as_ref().and_then(|vk| {
+                    bound_vars.push(tv.clone());
+                    let res = get_type_kind_rec(body, bound_vars)
+                        .map(|k| Kind::new_arrow(vk.clone(), k));
+                    bound_vars.pop();
+                    res
+                })
+            }
+            TermType::Appl(ref l, ref r) => {
+                if let (Some(ref l_kind), Some(ref r_kind)) = (get_type_kind_rec(l, bound_vars),
+                                                               get_type_kind_rec(r, bound_vars)) {
+                    if let Kind::Arrow(ref from, ref to) = *l_kind.as_ref() {
+                        if from == r_kind {
+                            return Some(to.clone());
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    let mut bound_vars = Vec::new();
+    get_type_kind_rec(ty, &mut bound_vars)
+}
+
+fn reduce_type_step(ty: &TermType) -> Option<RcTermType> {
+    match *ty {
+        TermType::Int |
+        TermType::Bool |
+        TermType::Named(..) |
+        TermType::Var(..) |
+        TermType::Pi(..) |
+        TermType::Type => None,
+        TermType::Arrow(ref from, ref to) => {
+            let r_from = reduce_type_step(from);
+            let r_to = reduce_type_step(to);
+            if r_from.is_none() && r_to.is_none() {
+                None
+            } else {
+                Some(TermType::new_arrow(r_from.unwrap_or_else(|| from.clone()),
+                                         r_to.unwrap_or_else(|| to.clone())))
+            }
+        }
+        TermType::Appl(ref l, ref r) => {
+            let l = reduce_type_step(l).unwrap_or_else(|| l.clone());
+            let r = reduce_type_step(r).unwrap_or_else(|| r.clone());
+            if let (&TermType::Pi(ref var, ref body), Some(ref l_kind), Some(ref r_kind)) =
+                   (l.as_ref(), get_type_kind(&l), get_type_kind(&r)) {
+                if let Kind::Arrow(ref from, _) = *l_kind.as_ref() {
+                    if from == r_kind {
+                        return Some(subst_type(body, var, &r));
+                    }
+                }
+            }
+            None
+        }
+    }
+}
+
+fn reduce_type(ty: RcTermType) -> RcTermType {
+    let mut result = ty;
+    while let Some(ty) = reduce_type_step(&result) {
+        result = ty;
+    }
+    result
 }
 
 pub fn check_term_type(term: &Term) -> Option<RcTermType> {
@@ -46,8 +136,7 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
             Term::Var(ref v) => {
                 match var_bindings.iter().rev().find(|u| u.name() == v.name()) {
                     Some(u) => {
-                        if u.sort() == v.sort() ||
-                           *v.sort() == Sort::None {
+                        if u.sort() == v.sort() || *v.sort() == Sort::None {
                             return get_vars_type(u);
                         }
                     }
@@ -68,17 +157,15 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                     Sort::Kind(..) => {
                         match (TypeVariable::from_var(v), body_type) {
                             (Some(tv), Some(t)) => Some(TermType::new_pi(tv, t)),
-                            _ => None
+                            _ => None,
                         }
                     }
-                    Sort::Type(ref ty) => {
-                        body_type.map(|t| TermType::new_arrow(ty.clone(), t))
-                    }
+                    Sort::Type(ref ty) => body_type.map(|t| TermType::new_arrow(ty.clone(), t)),
                 }
             }
             Term::Appl(ref l_term, ref r_term) => {
-                let left_type = check_type_rec(l_term, var_bindings);
-                let right_type = check_type_rec(r_term, var_bindings);
+                let left_type = check_type_rec(l_term, var_bindings).map(reduce_type);
+                let right_type = check_type_rec(r_term, var_bindings).map(reduce_type);
                 if let (Some(ref l), Some(ref r)) = (left_type, right_type) {
                     match (l.as_ref(), r_term.as_ref()) {
                         (&TermType::Arrow(ref from, ref to), _) => {
@@ -86,11 +173,16 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                                 return Some(to.clone());
                             }
                         }
-                        (&TermType::Pi(ref v, ref ty), &Term::Type(ref v_ty)) => {
-                            return Some(subst_type(ty, v, v_ty))
+                        (&TermType::Pi(..), &Term::Type(ref v_ty)) => {
+                            return Some(TermType::new_appl(l.clone(), v_ty.clone()));
                         }
                         _ => (),
                     }
+                    println!("Cant apply {:#}:{:#} to {:#}:{:#}",
+                             &r_term,
+                             &r,
+                             &l_term,
+                             &l);
                 }
                 None
             }
@@ -101,9 +193,9 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                 }
             }
             Term::If(ref i, ref t, ref e) => {
-                let if_type = check_type_rec(i, var_bindings);
-                let then_type = check_type_rec(t, var_bindings);
-                let else_type = check_type_rec(e, var_bindings);
+                let if_type = check_type_rec(i, var_bindings).map(reduce_type);
+                let then_type = check_type_rec(t, var_bindings).map(reduce_type);
+                let else_type = check_type_rec(e, var_bindings).map(reduce_type);
                 if let (Some(ref if_t), Some(ref then_t), Some(ref else_t)) = (if_type,
                                                                                then_type,
                                                                                else_type) {
@@ -114,8 +206,10 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                 None
             }
             Term::Builtin(ref bc) => {
-                let results =
-                    bc.args().iter().map(|t| check_type_rec(t, var_bindings)).collect::<Vec<_>>();
+                let results = bc.args()
+                    .iter()
+                    .map(|t| check_type_rec(t, var_bindings).map(reduce_type))
+                    .collect::<Vec<_>>();
                 if results.iter().any(|t| t.is_none()) {
                     None
                 } else {
@@ -166,7 +260,7 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
         }
     }
 
-    check_type_rec(term, &mut var_bindings)
+    check_type_rec(term, &mut var_bindings).map(reduce_type)
 }
 
 #[cfg(test)]
@@ -187,10 +281,13 @@ mod test {
                          (r"(\a:*.\f:a.f) [A]", r"A->A"),
                          (r"(\a:*.\f:a.f) [A] x:A", r"A"),
                          (r"(\a:*.\f:a->a.\x:a.f (f x))", r"\a:*.(a->a)->a->a"),
-                         (r"let inc:Int->Int=\x:Int.(+ x 1) in 
-let dup:\t:*.(t->t)->t->t=\t:*.\f:t->t.\x:t.f (f x) in dup [Int] inc 10",
+                         (r"a:{(\a:*.a->a) Int}", r"Int->Int"),
+                         (r"a:{{(\a:*=>*.\b:*.{a ({a b})}) (\x:*.x->x)} Int}",
+                          r"(Int->Int)->(Int->Int)"),
+                         ("let inc:Int->Int=\\x:Int.(+ x 1) in let \
+                           dup:\\t:*.(t->t)->t->t=\\t:*.\\f:t->t.\\x:t.f (f x) in dup [Int] inc 10",
                           r"Int"),
-                         (r"(\a:*.\f:\b:*.b->b.\x:a.f [a] x) [Int] (\b:*.\x:b.x) 10", r"Int"),
+                         (r"(\a:*.\f:\b:*.b->b.\x:a:*.f [a:*] x) [Int] (\b:*.\x:b.x) 10", r"Int"),
                          ("\\x:Int.\\y:A.\\z:A. if (= x 0) then z else y", "Int->A->A->A")];
         for (term, term_type) in tests.into_iter() {
             let src_term = parse_term(term).expect(term);

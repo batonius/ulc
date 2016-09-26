@@ -66,13 +66,7 @@ PiType: RcTermType = {
 };
 
 TypeVar: TypeVariable = {
-    <n:r"[a-z][a-zA-Z0-9]*"> <k:( ":" <Kind>)?> => {
-        if let Some(k) = k {
-            TypeVariable::new(n, k)
-        } else {
-            TypeVariable::new(n, Kind::new_star())
-        }
-    }
+    <n:r"[a-z][a-zA-Z0-9]*"> <k:( ":" <Kind>)?> => TypeVariable::new(n, k)
 };
 
 NamedType: RcTermType = {
@@ -87,14 +81,19 @@ SimpleType: RcTermType = {
     <NamedType>,
 };
 
-ArrowType: RcTermType = {
-    <SimpleType> "->" <Type> => TermType::new_arrow(<>),
+ApplType: RcTermType = {
+    "{" <ApplType> <SimpleType> "}" => TermType::new_appl(<>),
     <SimpleType>
+};
+
+ArrowType: RcTermType = {
+    <ApplType> "->" <Type> => TermType::new_arrow(<>),
+    <ApplType>
 };
 
 pub Type: RcTermType = {
     <PiType>,
-    <ArrowType>
+    <ArrowType>,
 };
 
 StarKind: RcKind = {

@@ -45,7 +45,7 @@ impl Variable {
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{:#}", self.var_name, self.sort())
+        write!(f, "{}", self.var_name)
     }
 }
 
@@ -115,7 +115,7 @@ impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Term::Var(ref var) => var.fmt(f),
-            Term::Abs(ref var, ref term) => write!(f, "\\{:#}.{:#}", var, term),
+            Term::Abs(ref var, ref term) => write!(f, "\\{:#}:{:#}.{:#}", var, var.sort(), term),
             Term::Appl(ref left, ref right) => write!(f, "({:#} {:#})", left, right),
             Term::Lit(ref lit) => lit.fmt(f),
             Term::Builtin(ref builtin) => builtin.fmt(f),

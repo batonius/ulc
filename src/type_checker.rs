@@ -199,11 +199,6 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                         }
                         _ => (),
                     }
-                    println!("Cant apply {:#}:{:#} to {:#}:{:#}",
-                             &r_term,
-                             &r,
-                             &l_term,
-                             &l);
                 }
                 None
             }

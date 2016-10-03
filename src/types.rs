@@ -96,10 +96,7 @@ impl TypeVariable {
 
 impl fmt::Display for TypeVariable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.var_kind {
-            None => write!(f, "{}", self.var_name),
-            Some(ref k) => write!(f, "{}:{:#}", self.var_name, &k),
-        }
+        write!(f, "{}", self.var_name)
     }
 }
 
@@ -129,7 +126,13 @@ impl fmt::Display for TermType {
                 write!(f, "({:#} -> {:#})", from.as_ref(), to.as_ref())
             }
             TermType::Appl(ref l, ref r) => write!(f, "{{{:#} {:#}}}", l.as_ref(), r.as_ref()),
-            TermType::Pi(ref ty_var, ref ty) => write!(f, "\\{:#}.{:#}", ty_var, ty),
+            TermType::Pi(ref ty_var, ref ty) => {
+                if let Some(ref k) = *ty_var.kind() {
+                    write!(f, "\\{:#}:{:#}.{:#}", ty_var, k, ty)
+                } else {
+                    write!(f, "\\{:#}.{:#}", ty_var, ty)
+                }
+            }
         }
     }
 }

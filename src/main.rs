@@ -1,6 +1,7 @@
 #![feature(slice_patterns, test)]
 
 extern crate test;
+extern crate rustyline;
 
 mod terms;
 mod builtin;
@@ -10,21 +11,26 @@ mod reduct;
 mod types;
 mod type_checker;
 
+use rustyline::Editor;
+
 fn main() {
-    let mut input = String::new();
+    let mut rustyline = Editor::<()>::new();
     loop {
-        input.clear();
-        std::io::stdin().read_line(&mut input).unwrap();
-        input = input.as_str().trim().to_owned();
-        if input.is_empty() {
-            break;
+        match rustyline.readline("> ") {
+            Ok(line) => {
+                if line.is_empty() {
+                    break;
+                }
+                rustyline.add_history_entry(&line);
+                let term = parse::parse_term(&line).expect("Parsing error.");
+                println!("{:#}", reduct::beta_reduction_strict(&term));
+                println!("\t: {:#}",
+                         type_checker::check_term_type(&term)
+                         .unwrap_or(types::TermType::new_named("Type check failed.")));
+            }
+            _ => {
+                break;
+            }
         }
-        let term = parse::parse_term(&input).expect("Parsing error");
-        println!("{:#}", term);
-        println!("{:#}",
-                 type_checker::check_term_type(&term)
-                     .unwrap_or(types::TermType::new_named("Fail!")));
-        println!("{:#}", reduct::beta_reduction_strict(&term));
-        // println!("{:#}", reduct::beta_reduction_lazy(&term));
     }
 }

@@ -166,4 +166,54 @@ impl TermType {
     pub fn new_appl(l: RcTermType, r: RcTermType) -> RcTermType {
         Rc::new(TermType::Appl(l, r))
     }
+
+    pub fn is_isomorphic_to(&self, other: &Self) -> bool {
+        are_types_isomorphic(self, other)
+    }
+}
+
+fn are_types_isomorphic(left: &TermType, right: &TermType) -> bool {
+    fn ati_rec(left: &TermType, right: &TermType, vars: &mut Vec<(String, String)>) -> bool {
+        match (left, right) {
+            (&TermType::Int, &TermType::Int) |
+            (&TermType::Bool, &TermType::Bool) |
+            (&TermType::Type, &TermType::Type) => true,
+            (&TermType::Named(ref left_name), &TermType::Named(ref right_name)) => {
+                left_name == right_name
+            }
+            (&TermType::Var(ref left_var), &TermType::Var(ref right_var)) => {
+                if left_var.kind() != right_var.kind() {
+                    return false;
+                }
+
+                let expected_right_name = vars.iter()
+                    .rev()
+                    .find(|&t| t.0 == left_var.name())
+                    .map(|&(_, ref r)| r);
+
+                if let Some(right_name) = expected_right_name {
+                    return right_name == right_var.name();
+                }
+
+                left_var.name() == right_var.name()
+            }
+            (&TermType::Appl(ref lf, ref lt), &TermType::Appl(ref rf, ref rt)) |
+            (&TermType::Arrow(ref lf, ref lt), &TermType::Arrow(ref rf, ref rt)) => {
+                ati_rec(lf, rf, vars) && ati_rec(lt, rt, vars)
+            }
+            (&TermType::Pi(ref l_var, ref l_body), &TermType::Pi(ref r_var, ref r_body)) => {
+                if l_var.kind() != r_var.kind() {
+                    return false;
+                }
+                vars.push((l_var.name().to_owned(), r_var.name().to_owned()));
+                let res = ati_rec(l_body, r_body, vars);
+                vars.pop();
+                res
+            }
+            _ => false,
+        }
+    }
+
+    let mut vars = Vec::new();
+    ati_rec(left, right, &mut vars)
 }

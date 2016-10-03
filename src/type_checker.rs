@@ -190,7 +190,7 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                 if let (Some(ref l), Some(ref r)) = (left_type, right_type) {
                     match (l.as_ref(), r_term.as_ref()) {
                         (&TermType::Arrow(ref from, ref to), _) => {
-                            if from == r {
+                            if from.is_isomorphic_to(r) {
                                 return Some(to.clone());
                             }
                         }
@@ -223,7 +223,7 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                 if let (Some(ref if_t), Some(ref then_t), Some(ref else_t)) = (if_type,
                                                                                then_type,
                                                                                else_type) {
-                    if *if_t.as_ref() == TermType::Bool && then_t == else_t {
+                    if *if_t.as_ref() == TermType::Bool && then_t.is_isomorphic_to(else_t) {
                         return Some(then_t.clone());
                     }
                 }
@@ -313,7 +313,7 @@ mod test {
                          ("let inc:Int->Int=\\x:Int.(+ x 1) in let \
                            dup:\\t:*.(t->t)->t->t=\\t:*.\\f:t->t.\\x:t.f (f x) in dup [Int] inc 10",
                           r"Int"),
-                         (r"(\a:*.\f:\b:*.b->b.\x:a.f [a] x) [Int] (\b:*.\x:b.x) 10", r"Int"),
+                         (r"(\a:*.\f:\b:*.b->b.\x:a.f [a] x) [Int] (\c:*.\x:c.x) 10", r"Int"),
                          (r"(\a:*=>*.\b:*.\x:{a ({a b})}.x) [\x:*.x->x] [Int] ",
                           r"((Int->Int)->(Int->Int))->((Int->Int)->(Int->Int))"),
                          ("\\x:Int.\\y:A.\\z:A. if (= x 0) then z else y", "Int->A->A->A")];

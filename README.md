@@ -5,7 +5,7 @@
 Implements strict and lazy beta-reduction for untyped lambda calculus and type checking for λ2 + λω.
 
 # Syntax
-Basic lambda calculus with \ for λ, extended with numbers, booleans(true and false), conditionals (if .. then .. else ..) and type-valued terms ([Type]). On type level \ stands for ∀, -> for →, {A B} for type application; on kind level * stands for ∗ and => for ⇒. "let x:T = y in z" is a shorthand for (\x:T.z) y.
+Basic lambda calculus with \ for λ, extended with natural numbers, booleans(true and false), conditionals (if .. then .. else ..) and type-valued terms ([Type]). On type level \ stands for ∀, -> for →, {A B} for application; on kind level * stands for ∗ and => for ⇒. "let x:T = y in z" is a shorthand for (\x:T.z) y.
 
 
 # Examples

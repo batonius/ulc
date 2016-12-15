@@ -26,7 +26,7 @@ fn main() {
                 println!("{:#}", reduct::beta_reduction_strict(&term));
                 println!("\t: {:#}",
                          type_checker::check_term_type(&term)
-                         .unwrap_or(types::TermType::new_named("Type check failed.")));
+                             .unwrap_or(types::TermType::new_named("Type check failed.")));
             }
             _ => {
                 break;

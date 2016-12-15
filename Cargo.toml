@@ -4,13 +4,12 @@ version = "0.1.0"
 authors = ["baton <batonius.kirov@gmail.com>"]
 build = "build.rs"
 
-
 [dependencies]
-lalrpop-util = { git = "https://github.com/nikomatsakis/lalrpop"}
+lalrpop-util = "*"
 rustyline = "1.0.0"
 
 [build-dependencies]
-lalrpop = { git = "https://github.com/nikomatsakis/lalrpop"}
+lalrpop = "*"
 
 [profile.release]
 lto=true

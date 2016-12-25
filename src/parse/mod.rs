@@ -23,6 +23,7 @@ pub fn parse_term(s: &str) -> Option<RcTerm> {
     LalrpopParser::parse(s)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn parse_type(s: &str) -> Option<RcTermType> {
     match parse_Type(s) {
         Ok(e) => Some(e),

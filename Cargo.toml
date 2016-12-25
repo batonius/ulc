@@ -13,3 +13,7 @@ lalrpop = "*"
 
 [profile.release]
 lto=true
+
+[features]
+default = []
+nightly = []

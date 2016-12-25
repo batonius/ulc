@@ -17,7 +17,7 @@ impl fmt::Display for BuiltinType {
             BuiltinType::Sub => write!(f, "-"),
             BuiltinType::Mul => write!(f, "*"),
             BuiltinType::Div => write!(f, "/"),
-            BuiltinType::Eq => write!(f, "=")
+            BuiltinType::Eq => write!(f, "="),
         }
     }
 }
@@ -25,10 +25,7 @@ impl fmt::Display for BuiltinType {
 impl BuiltinType {
     fn arity(&self) -> usize {
         match *self {
-            BuiltinType::Add |
-            BuiltinType::Sub |
-            BuiltinType::Mul |
-            BuiltinType::Div |
+            BuiltinType::Add | BuiltinType::Sub | BuiltinType::Mul | BuiltinType::Div |
             BuiltinType::Eq => 2,
         }
     }
@@ -82,19 +79,22 @@ impl BuiltinClosure {
         }
 
         match self.builtin_type {
-            BuiltinType::Add => BuiltinClosure::try_compute_num(&self.args, |a, b| a+b),
-            BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a-b),
-            BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a*b),
-            BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a/b),
-            BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a==b),
+            BuiltinType::Add => BuiltinClosure::try_compute_num(&self.args, |a, b| a + b),
+            BuiltinType::Sub => BuiltinClosure::try_compute_num(&self.args, |a, b| a - b),
+            BuiltinType::Mul => BuiltinClosure::try_compute_num(&self.args, |a, b| a * b),
+            BuiltinType::Div => BuiltinClosure::try_compute_num(&self.args, |a, b| a / b),
+            BuiltinType::Eq => BuiltinClosure::try_compute_bool(&self.args, |a, b| a == b),
         }
     }
 
     fn try_compute_num<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
-    where F: FnOnce(isize, isize) -> isize {
-        if let [ref a, ref b] = *args {
-            if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
+        where F: FnOnce(isize, isize) -> isize
+    {
+        if args.len() == 2 {
+            let a = &args[0];
+            let b = &args[1];
+            if let (&Term::Lit(Literal::Num(ref x)), &Term::Lit(Literal::Num(ref y))) =
+                (a.as_ref(), b.as_ref()) {
                 return Some(Term::num_lit_rc(f(*x, *y)));
             }
         }
@@ -102,10 +102,13 @@ impl BuiltinClosure {
     }
 
     fn try_compute_bool<F>(args: &[RcTerm], f: F) -> Option<RcTerm>
-        where F: FnOnce(isize, isize) -> bool {
-        if let [ref a, ref b] = *args {
-            if let (&Term::Lit(Literal::Num(ref x)),
-                    &Term::Lit(Literal::Num(ref y))) = (a.as_ref(), b.as_ref()) {
+        where F: FnOnce(isize, isize) -> bool
+    {
+        if args.len() == 2 {
+            let a = &args[0];
+            let b = &args[1];
+            if let (&Term::Lit(Literal::Num(ref x)), &Term::Lit(Literal::Num(ref y))) =
+                (a.as_ref(), b.as_ref()) {
                 return Some(Term::bool_lit_rc(f(*x, *y)));
             }
         }

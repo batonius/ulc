@@ -185,6 +185,7 @@ pub fn beta_reduction_strict(term: &RcTerm) -> RcTerm {
     beta_reduction::<StrictBetaReductionStrategy>(term)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn beta_reduction_lazy(term: &RcTerm) -> RcTerm {
     beta_reduction::<LazyBetaReductionStrategy>(term)
 }
@@ -192,15 +193,21 @@ pub fn beta_reduction_lazy(term: &RcTerm) -> RcTerm {
 #[cfg(test)]
 mod test {
     use parse::parse_term;
-    use terms::{Term, Variable};
+    use terms::Variable;
     use super::{StrictBetaReductionStrategy, LazyBetaReductionStrategy};
+    #[cfg(feature="nightly")]
+    use terms::Term;
+    #[cfg(feature="nightly")]
     use test::Bencher;
 
+    #[cfg(feature="nightly")]
     static FACTORIAL: &'static str = "(\\f.(\\x.f (x x)) (\\x.f (x x))) \
                                       (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) 20";
+    #[cfg(feature="nightly")]
     static STRICT_FACTORIAL: &'static str = "(\\f.(\\x.f (\\v.(x x v))) (\\x.f (\\v.(x x v)))) \
                                              (\\f.\\n.(if (= n 1) then 1 else (* n (f (- n 1))))) \
                                              20";
+    #[cfg(feature="nightly")]
     static FAC_20: isize = 2_432_902_008_176_640_000;
 
     #[test]
@@ -289,12 +296,14 @@ mod test {
     }
 
     #[bench]
+    #[cfg(feature="nightly")]
     fn lazy_rec_reduction(b: &mut Bencher) {
         let term = parse_term(FACTORIAL).expect(FACTORIAL);
         b.iter(|| assert_eq!(super::beta_reduction_lazy(&term), Term::num_lit_rc(FAC_20)));
     }
 
     #[bench]
+    #[cfg(feature="nightly")]
     fn strict_rec_reduction(b: &mut Bencher) {
         let term = parse_term(STRICT_FACTORIAL).expect(STRICT_FACTORIAL);
         b.iter(|| {

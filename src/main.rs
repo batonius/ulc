@@ -1,5 +1,6 @@
-#![feature(slice_patterns, test)]
+#![cfg_attr(feature="nightly", feature(slice_patterns, test))]
 
+#[cfg(feature="nightly")]
 extern crate test;
 extern crate rustyline;
 

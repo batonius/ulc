@@ -239,36 +239,36 @@ pub fn check_term_type(term: &Term) -> Option<RcTermType> {
                     match bc.builtin_type() {
                         BuiltinType::Add | BuiltinType::Sub | BuiltinType::Mul |
                         BuiltinType::Div => {
-                            match *results.as_slice() {
-                                [] => Some(TermType::new_arrow
+                            match results.len() {
+                                0 => Some(TermType::new_arrow
                                            (TermType::new_int(),
                                             TermType::new_arrow
                                             (TermType::new_int(),
                                              TermType::new_int()))),
-                                [ref a] if *a.as_ref() == TermType::Int => {
+                                1 if *results[0] == TermType::Int => {
                                     Some(TermType::new_arrow(TermType::new_int(),
                                                              TermType::new_int()))
                                 }
-                                [ref a, ref b] if *a.as_ref() == TermType::Int &&
-                                                  *b.as_ref() == TermType::Int => {
+                                2 if *results[0] == TermType::Int &&
+                                    *results[1] == TermType::Int => {
                                     Some(TermType::new_int())
                                 }
                                 _ => None,
                             }
                         }
                         BuiltinType::Eq => {
-                            match *results.as_slice() {
-                                [] => Some(TermType::new_arrow
+                            match results.len() {
+                                0 => Some(TermType::new_arrow
                                            (TermType::new_int(),
                                             TermType::new_arrow
                                             (TermType::new_int(),
                                              TermType::new_bool()))),
-                                [ref a] if *a.as_ref() == TermType::Int => {
+                                1 if *results[0] == TermType::Int => {
                                     Some(TermType::new_arrow(TermType::new_int(),
                                                              TermType::new_bool()))
                                 }
-                                [ref a, ref b] if *a.as_ref() == TermType::Int &&
-                                                  *b.as_ref() == TermType::Int => {
+                                2 if *results[0] == TermType::Int &&
+                                    *results[1] == TermType::Int => {
                                     Some(TermType::new_bool())
                                 }
                                 _ => None,
